@@ -8,7 +8,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
-from isat.utils.rocm import GPUAgent, parse_rocminfo, xnack_supported
+from isat.utils.rocm import GPUAgent, parse_rocminfo, xnack_enabled, xnack_supported
 from isat.utils.sysfs import (
     gpu_gtt_used_mb,
     gpu_sclk_mhz,
@@ -38,6 +38,7 @@ class HardwareFingerprint:
     is_apu: bool = False
     unified_memory: bool = False
     xnack_supported: bool = False
+    xnack_enabled: bool = False
 
     kernel_version: str = ""
     rocm_version: str = ""
@@ -66,8 +67,8 @@ def fingerprint_hardware() -> HardwareFingerprint:
 
     agent = parse_rocminfo()
     if agent:
-        fp.gpu_name = agent.name
-        fp.gfx_target = agent.gfx_target
+        fp.gpu_name = agent.product or agent.name or "unknown"
+        fp.gfx_target = agent.gfx_target or "unknown"
         fp.cu_count = agent.cu_count
         fp.simd_count = agent.simd_count
         fp.max_clock_mhz = agent.max_clock_mhz
@@ -80,6 +81,7 @@ def fingerprint_hardware() -> HardwareFingerprint:
     fp.kernel_version = kernel_version()
     fp.rocm_version = rocm_version() or "unknown"
     fp.xnack_supported = xnack_supported()
+    fp.xnack_enabled = xnack_enabled()
 
     fp.gpu_temp_c = gpu_temp_edge()
     fp.gpu_sclk_mhz = gpu_sclk_mhz()

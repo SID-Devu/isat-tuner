@@ -21,6 +21,8 @@ from typing import Any, Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.batching")
 
 
@@ -93,7 +95,7 @@ class DynamicBatcher:
         import onnxruntime as ort
         self._session = ort.InferenceSession(
             self.model_path,
-            providers=[self.provider, "CPUExecutionProvider"],
+            providers=ort_providers(self.provider),
         )
         self._running = True
         self._worker = threading.Thread(target=self._batch_loop, daemon=True)

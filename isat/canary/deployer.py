@@ -18,6 +18,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.canary")
 
 
@@ -103,10 +105,10 @@ class CanaryDeployer:
         import onnxruntime as ort
 
         baseline_session = ort.InferenceSession(
-            self.baseline_path, providers=[self.provider, "CPUExecutionProvider"],
+            self.baseline_path, providers=ort_providers(self.provider),
         )
         canary_session = ort.InferenceSession(
-            self.canary_path, providers=[self.provider, "CPUExecutionProvider"],
+            self.canary_path, providers=ort_providers(self.provider),
         )
         baseline_feed = _build_feed(baseline_session)
         canary_feed = _build_feed(canary_session)

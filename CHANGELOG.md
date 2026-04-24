@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.7.6] - 2026-04-02
+
+### Fixed
+- **hwinfo**: GPU name, GFX target, CU count now correctly parsed from `rocminfo` — was
+  showing "unknown" on AMD APUs because the parser matched the CPU agent instead of GPU agent.
+  Now uses `Device Type: GPU` as the section delimiter for reliable detection
+- **hwinfo**: Added `XNACK enabled` status (reads `HSA_XNACK` env + `rocminfo` system flag)
+  so you can see at a glance whether demand paging is active
+- **leak-check**: Fixed false positive from MIGraphX JIT compilation memory — now runs warmup
+  iterations before measuring so one-time compilation memory is excluded from the delta.
+  Also uses trend analysis (first-third vs last-third) instead of raw delta for better accuracy
+- **leak-check**: Fixed sampling never occurring when `iterations < sample_interval` — now
+  auto-adjusts `sample_interval` to guarantee at least 5 sample points
+- **sla**: Unprovided metrics now show `N/A` and `SKIP` instead of misleading `0.00ms PASS`.
+  Fixed argparse defaults from `0` to `None` so zero-valued metrics can be provided explicitly
+- **cost**: `--list-gpus` no longer requires `--latency` — works as standalone flag
+- **compare**: Fixed `p-value=nan` and nonsensical t-stat caused by replicated mean values
+  (zero variance). Now stores and uses actual per-iteration latencies. Added guards for
+  near-zero variance edge cases in both `compare_configs` and `ABTest._welch_t_test`
+- **Duplicate provider warning**: Eliminated `Duplicate provider CPUExecutionProvider` ORT
+  warning across all 25+ modules by using `ort_providers()` helper that deduplicates the list
+
 ## [0.7.5] - 2026-04-02
 
 ### Fixed

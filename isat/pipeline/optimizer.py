@@ -15,6 +15,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.pipeline")
 
 
@@ -87,7 +89,7 @@ class PipelineOptimizer:
 
             session = ort.InferenceSession(
                 model_path,
-                providers=[self.provider, "CPUExecutionProvider"],
+                providers=ort_providers(self.provider),
             )
             feed = _build_feed(session)
 

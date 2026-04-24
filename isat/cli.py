@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 from isat import __version__
+from isat.utils import ort_providers
 
 BANNER = (
     r"""
@@ -222,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── cost ─────────────────────────────────────────────────
     p_cost = sub.add_parser("cost", help="Estimate cloud inference cost")
-    p_cost.add_argument("--latency", type=float, required=True, help="Mean latency in ms")
+    p_cost.add_argument("--latency", type=float, default=None, help="Mean latency in ms")
     p_cost.add_argument("--gpu", default="a10g", help="GPU type (a10g, t4, a100_40gb, h100_80gb, etc.)")
     p_cost.add_argument("--batch-size", type=int, default=1)
     p_cost.add_argument("--list-gpus", action="store_true", help="List available GPU pricing")
@@ -230,12 +231,12 @@ def main(argv: list[str] | None = None) -> int:
     # ── sla ──────────────────────────────────────────────────
     p_sla = sub.add_parser("sla", help="Validate inference against SLA requirements")
     p_sla.add_argument("--template", choices=["realtime", "batch", "edge", "llm", "mobile"], default="realtime")
-    p_sla.add_argument("--p50", type=float, default=0, help="P50 latency ms")
-    p_sla.add_argument("--p95", type=float, default=0, help="P95 latency ms")
-    p_sla.add_argument("--p99", type=float, default=0, help="P99 latency ms")
-    p_sla.add_argument("--throughput", type=float, default=0, help="Throughput RPS")
-    p_sla.add_argument("--memory", type=float, default=0, help="Memory MB")
-    p_sla.add_argument("--cold-start", type=float, default=0, help="Cold start ms")
+    p_sla.add_argument("--p50", type=float, default=None, help="P50 latency ms")
+    p_sla.add_argument("--p95", type=float, default=None, help="P95 latency ms")
+    p_sla.add_argument("--p99", type=float, default=None, help="P99 latency ms")
+    p_sla.add_argument("--throughput", type=float, default=None, help="Throughput RPS")
+    p_sla.add_argument("--memory", type=float, default=None, help="Memory MB")
+    p_sla.add_argument("--cold-start", type=float, default=None, help="Cold start ms")
     p_sla.add_argument("--list-templates", action="store_true")
 
     # ── warmup ───────────────────────────────────────────────
@@ -738,6 +739,7 @@ def _cmd_hwinfo(args) -> int:
     print(f"  APU            : {'yes' if hw.is_apu else 'no'}")
     print(f"  Unified memory : {'yes' if hw.unified_memory else 'no'}")
     print(f"  XNACK support  : {'yes' if hw.xnack_supported else 'no'}")
+    print(f"  XNACK enabled  : {'yes' if hw.xnack_enabled else 'no'}")
     print(f"  Memory class   : {hw.memory_class}")
     print(f"  ROCm version   : {hw.rocm_version}")
     print(f"  Kernel         : {hw.kernel_version}")
@@ -873,8 +875,8 @@ def _cmd_compare(args) -> int:
     print(f"Running {args.runs} iterations for config B: {args.config_b}")
     result_b = runner.run_single(_make_config(args.config_b))
 
-    latencies_a = [result_a.mean_latency_ms] * args.runs
-    latencies_b = [result_b.mean_latency_ms] * args.runs
+    latencies_a = result_a.latencies if result_a.latencies else [result_a.mean_latency_ms] * args.runs
+    latencies_b = result_b.latencies if result_b.latencies else [result_b.mean_latency_ms] * args.runs
 
     result = compare_configs(latencies_a, latencies_b, confidence=args.confidence)
 
@@ -1243,6 +1245,10 @@ def _cmd_cost(args) -> int:
         print(f"{'='*70}\n")
         return 0
 
+    if args.latency is None:
+        print("Error: --latency is required (unless using --list-gpus)")
+        return 1
+
     estimate = estimator.estimate(args.latency, gpu_type=args.gpu, batch_size=args.batch_size)
     print(f"\n{'='*60}")
     print(f"  INFERENCE COST ESTIMATE")
@@ -1270,12 +1276,12 @@ def _cmd_sla(args) -> int:
 
     validator = SLAValidator(template=args.template)
     metrics = {}
-    if args.p50: metrics["p50_ms"] = args.p50
-    if args.p95: metrics["p95_ms"] = args.p95
-    if args.p99: metrics["p99_ms"] = args.p99
-    if args.throughput: metrics["throughput_rps"] = args.throughput
-    if args.memory: metrics["memory_mb"] = args.memory
-    if args.cold_start: metrics["cold_start_ms"] = args.cold_start
+    if args.p50 is not None: metrics["p50_ms"] = args.p50
+    if args.p95 is not None: metrics["p95_ms"] = args.p95
+    if args.p99 is not None: metrics["p99_ms"] = args.p99
+    if args.throughput is not None: metrics["throughput_rps"] = args.throughput
+    if args.memory is not None: metrics["memory_mb"] = args.memory
+    if args.cold_start is not None: metrics["cold_start_ms"] = args.cold_start
 
     if not metrics:
         print("Error: provide at least one metric (--p50, --p95, --p99, --throughput, --memory, --cold-start)")
@@ -1537,7 +1543,7 @@ def _cmd_regression(args) -> int:
 
     session = ort.InferenceSession(
         args.model,
-        providers=[args.provider, "CPUExecutionProvider"],
+        providers=ort_providers(args.provider),
     )
     feed = {}
     for inp in session.get_inputs():

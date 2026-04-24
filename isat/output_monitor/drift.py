@@ -20,6 +20,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.output_monitor")
 
 
@@ -101,7 +103,7 @@ class OutputMonitor:
         import onnxruntime as ort
 
         session = ort.InferenceSession(
-            self.model_path, providers=[self.provider, "CPUExecutionProvider"],
+            self.model_path, providers=ort_providers(self.provider),
         )
 
         for _ in range(3):

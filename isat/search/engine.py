@@ -71,6 +71,7 @@ class TuneResult:
     measured_runs: int = 0
     cooldown_s: float = 0.0
     error: Optional[str] = None
+    latencies: list[float] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = {

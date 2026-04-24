@@ -20,6 +20,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.ensemble")
 
 
@@ -90,7 +92,7 @@ class ModelEnsemble:
                 continue
             try:
                 session = ort.InferenceSession(
-                    path, providers=[self.provider, "CPUExecutionProvider"],
+                    path, providers=ort_providers(self.provider),
                 )
                 feed = _build_feed(session)
                 session.run(None, feed)

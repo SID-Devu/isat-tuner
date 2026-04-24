@@ -18,6 +18,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.replay")
 
 
@@ -97,7 +99,7 @@ class InferenceRecorder:
                           num_requests: int = 10) -> int:
         import onnxruntime as ort
         session = ort.InferenceSession(
-            model_path, providers=[provider, "CPUExecutionProvider"],
+            model_path, providers=ort_providers(provider),
         )
         for i in range(num_requests):
             feed = _build_feed(session)
@@ -125,7 +127,7 @@ class InferenceReplayer:
                tolerance: float = 1e-4) -> ReplayResult:
         import onnxruntime as ort
         session = ort.InferenceSession(
-            model_path, providers=[provider, "CPUExecutionProvider"],
+            model_path, providers=ort_providers(provider),
         )
 
         latencies = []

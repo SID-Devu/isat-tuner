@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.tracing")
 
 
@@ -92,7 +94,7 @@ class InferenceTracer:
         import onnxruntime as ort
 
         session = ort.InferenceSession(
-            model_path, providers=[provider, "CPUExecutionProvider"],
+            model_path, providers=ort_providers(provider),
         )
         feed = self._build_feed(session)
 

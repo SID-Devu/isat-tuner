@@ -17,6 +17,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -35,6 +37,27 @@ BANNER = (
     + f"  Inference Stack Auto-Tuner v{__version__}\n"
     + "  by Sudheer Ibrahim Daniel Devu\n"
 )
+
+
+def _check_path_issue() -> str | None:
+    """Return a help message if the 'isat' script is installed but not on PATH."""
+    local_bin = Path.home() / ".local" / "bin"
+    isat_script = local_bin / "isat"
+    if isat_script.exists() and str(local_bin) not in os.environ.get("PATH", ""):
+        return (
+            f"\n  NOTE: The 'isat' command is installed at {isat_script}\n"
+            f"  but {local_bin} is not on your PATH.\n\n"
+            f"  Fix (permanent):\n"
+            f'    echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.bashrc && source ~/.bashrc\n\n'
+            f"  Or run directly:\n"
+            f"    python3 -m isat --help\n"
+        )
+    if not shutil.which("isat") and not sys.argv[0].endswith("__main__.py"):
+        return (
+            "\n  TIP: If 'isat' is not found after install, run:\n"
+            "    python3 -m isat --help\n"
+        )
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -428,6 +451,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command is None:
         print(BANNER)
+        path_msg = _check_path_issue()
+        if path_msg:
+            print(path_msg)
         parser.print_help()
         return 0
 

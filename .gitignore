@@ -9,3 +9,4 @@ isat_output/
 .ruff_cache/
 *.pftrace
 *.csv
+.github/

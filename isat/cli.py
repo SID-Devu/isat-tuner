@@ -357,6 +357,65 @@ def main(argv: list[str] | None = None) -> int:
     p_frag.add_argument("--provider", default="CPUExecutionProvider")
     p_frag.add_argument("--runs", type=int, default=200)
 
+    # ── prune ──────────────────────────────────────────────
+    p_prune = sub.add_parser("prune", help="Prune model weights (magnitude/percentage/global)")
+    p_prune.add_argument("model", help="Path to .onnx model")
+    p_prune.add_argument("--strategy", choices=["magnitude", "percentage", "global"], default="magnitude")
+    p_prune.add_argument("--sparsity", type=float, default=0.5, help="Target sparsity 0-1")
+    p_prune.add_argument("--output", default="", help="Output model path")
+    p_prune.add_argument("--analyze-only", action="store_true", help="Show current sparsity without pruning")
+
+    # ── distill ────────────────────────────────────────────
+    p_dist = sub.add_parser("distill", help="Knowledge distillation planning for teacher model")
+    p_dist.add_argument("model", help="Path to teacher .onnx model")
+
+    # ── fusion ─────────────────────────────────────────────
+    p_fus = sub.add_parser("fusion", help="Analyze operator fusion (fused vs unfused ops)")
+    p_fus.add_argument("model", help="Path to .onnx model")
+
+    # ── attention ──────────────────────────────────────────
+    p_attn = sub.add_parser("attention", help="Profile attention heads in transformer models")
+    p_attn.add_argument("model", help="Path to .onnx model")
+    p_attn.add_argument("--head-dim", type=int, default=64, help="Attention head dimension")
+
+    # ── llm-bench ──────────────────────────────────────────
+    p_llm = sub.add_parser("llm-bench", help="LLM token throughput benchmark (TPS, TTFT, ITL)")
+    p_llm.add_argument("model", help="Path to .onnx model")
+    p_llm.add_argument("--provider", default="CPUExecutionProvider")
+    p_llm.add_argument("--seq-lengths", default="32,64,128,256", help="Comma-separated sequence lengths")
+    p_llm.add_argument("--decode-steps", type=int, default=20)
+    p_llm.add_argument("--runs", type=int, default=5)
+
+    # ── compiler-compare ───────────────────────────────────
+    p_cc = sub.add_parser("compiler-compare", help="Compare model across all execution providers")
+    p_cc.add_argument("model", help="Path to .onnx model")
+    p_cc.add_argument("--runs", type=int, default=30)
+
+    # ── replay ─────────────────────────────────────────────
+    p_rep = sub.add_parser("replay", help="Record or replay inference requests")
+    p_rep.add_argument("action", choices=["record", "replay"], help="Record or replay")
+    p_rep.add_argument("model", help="Path to .onnx model")
+    p_rep.add_argument("--dir", default="isat_recording", help="Recording directory")
+    p_rep.add_argument("--provider", default="CPUExecutionProvider")
+    p_rep.add_argument("--num-requests", type=int, default=20)
+
+    # ── drift ──────────────────────────────────────────────
+    p_drift = sub.add_parser("drift", help="Monitor output quality and detect confidence drift")
+    p_drift.add_argument("model", help="Path to .onnx model")
+    p_drift.add_argument("--provider", default="CPUExecutionProvider")
+    p_drift.add_argument("--baseline-runs", type=int, default=50)
+    p_drift.add_argument("--monitor-runs", type=int, default=50)
+
+    # ── weight-sharing ─────────────────────────────────────
+    p_ws = sub.add_parser("weight-sharing", help="Detect shared/tied weights across layers")
+    p_ws.add_argument("model", help="Path to .onnx model")
+    p_ws.add_argument("--similarity", type=float, default=0.999, help="Cosine similarity threshold")
+
+    # ── codegen ────────────────────────────────────────────
+    p_cg = sub.add_parser("codegen", help="Generate standalone C++ inference code from ONNX model")
+    p_cg.add_argument("model", help="Path to .onnx model")
+    p_cg.add_argument("--output-dir", default="isat_cpp", help="Output directory for C++ files")
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -418,6 +477,16 @@ def main(argv: list[str] | None = None) -> int:
             "guard": _cmd_guard,
             "ensemble": _cmd_ensemble,
             "gpu-frag": _cmd_gpu_frag,
+            "prune": _cmd_prune,
+            "distill": _cmd_distill,
+            "fusion": _cmd_fusion,
+            "attention": _cmd_attention,
+            "llm-bench": _cmd_llm_bench,
+            "compiler-compare": _cmd_compiler_compare,
+            "replay": _cmd_replay,
+            "drift": _cmd_drift,
+            "weight-sharing": _cmd_weight_sharing,
+            "codegen": _cmd_codegen,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -1775,6 +1844,185 @@ def _cmd_gpu_frag(args) -> int:
     print(f"  GPU MEMORY FRAGMENTATION ANALYSIS")
     print(f"{'='*65}")
     print(report.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_prune(args) -> int:
+    from isat.pruning.pruner import ModelPruner
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    pruner = ModelPruner(args.model)
+    if args.analyze_only:
+        info = pruner.analyze_sparsity()
+        print(f"\n{'='*65}")
+        print(f"  SPARSITY ANALYSIS")
+        print(f"{'='*65}")
+        print(f"  Total params    : {info['total_params']:,}")
+        print(f"  Total zeros     : {info['total_zeros']:,}")
+        print(f"  Overall sparsity: {info['overall_sparsity']:.1%}")
+        for l in info["layers"][:15]:
+            print(f"    {l['name'][:40]:<40} sparsity={l['sparsity']:.1%}")
+        print(f"{'='*65}\n")
+        return 0
+    result = pruner.prune(strategy=args.strategy, sparsity=args.sparsity, output_path=args.output)
+    print(f"\n{'='*65}")
+    print(f"  MODEL PRUNING RESULT")
+    print(f"{'='*65}")
+    print(result.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_distill(args) -> int:
+    from isat.distillation.helper import DistillationHelper
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    helper = DistillationHelper(args.model)
+    plan = helper.plan()
+    print(f"\n{'='*65}")
+    print(f"  DISTILLATION PLAN")
+    print(f"{'='*65}")
+    print(plan.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_fusion(args) -> int:
+    from isat.fusion.analyzer import FusionAnalyzer
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    analyzer = FusionAnalyzer(args.model)
+    report = analyzer.analyze()
+    print(f"\n{'='*65}")
+    print(f"  OPERATOR FUSION ANALYSIS")
+    print(f"{'='*65}")
+    print(report.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_attention(args) -> int:
+    from isat.attention.profiler import AttentionProfiler
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    profiler = AttentionProfiler(args.model)
+    report = profiler.profile(head_dim=args.head_dim)
+    print(f"\n{'='*65}")
+    print(f"  ATTENTION HEAD ANALYSIS")
+    print(f"{'='*65}")
+    print(report.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_llm_bench(args) -> int:
+    from isat.llm_bench.benchmarker import LLMBenchmarker
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    seq_lengths = [int(x) for x in args.seq_lengths.split(",")]
+    bench = LLMBenchmarker(
+        args.model, provider=args.provider,
+        sequence_lengths=seq_lengths, decode_steps=args.decode_steps,
+    )
+    result = bench.benchmark(runs=args.runs)
+    print(f"\n{'='*70}")
+    print(f"  LLM TOKEN THROUGHPUT BENCHMARK")
+    print(f"{'='*70}")
+    print(result.summary())
+    print(f"{'='*70}\n")
+    return 0
+
+
+def _cmd_compiler_compare(args) -> int:
+    from isat.compiler_compare.comparator import CompilerComparator
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    comp = CompilerComparator(args.model)
+    report = comp.compare(runs=args.runs)
+    print(f"\n{'='*75}")
+    print(f"  COMPILER / PROVIDER COMPARISON")
+    print(f"{'='*75}")
+    print(report.summary())
+    print(f"{'='*75}\n")
+    return 0
+
+
+def _cmd_replay(args) -> int:
+    if args.action == "record":
+        from isat.replay.recorder import InferenceRecorder
+        if not Path(args.model).exists():
+            print(f"Error: model not found: {args.model}")
+            return 1
+        rec = InferenceRecorder(args.dir)
+        count = rec.record_from_model(args.model, provider=args.provider, num_requests=args.num_requests)
+        print(f"Recorded {count} requests to {args.dir}/")
+        return 0
+    else:
+        from isat.replay.recorder import InferenceReplayer
+        if not Path(args.dir).exists():
+            print(f"Error: recording not found: {args.dir}")
+            return 1
+        replayer = InferenceReplayer(args.dir)
+        result = replayer.replay(args.model, provider=args.provider)
+        print(f"\n{'='*65}")
+        print(f"  INFERENCE REPLAY RESULT")
+        print(f"{'='*65}")
+        print(result.summary())
+        print(f"{'='*65}\n")
+        return 0
+
+
+def _cmd_drift(args) -> int:
+    from isat.output_monitor.drift import OutputMonitor
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    monitor = OutputMonitor(
+        args.model, provider=args.provider,
+        baseline_runs=args.baseline_runs, monitor_runs=args.monitor_runs,
+    )
+    report = monitor.monitor()
+    print(f"\n{'='*65}")
+    print(f"  OUTPUT DRIFT MONITOR")
+    print(f"{'='*65}")
+    print(report.summary())
+    print(f"{'='*65}\n")
+    return 1 if report.drift_detected else 0
+
+
+def _cmd_weight_sharing(args) -> int:
+    from isat.weight_analysis.sharing import WeightSharingDetector
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    detector = WeightSharingDetector(args.model, similarity_threshold=args.similarity)
+    report = detector.analyze()
+    print(f"\n{'='*65}")
+    print(f"  WEIGHT SHARING ANALYSIS")
+    print(f"{'='*65}")
+    print(report.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_codegen(args) -> int:
+    from isat.codegen.generator import CppCodeGenerator
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    gen = CppCodeGenerator(args.model)
+    result = gen.generate(output_dir=args.output_dir)
+    print(f"\n{'='*65}")
+    print(f"  C++ CODE GENERATION")
+    print(f"{'='*65}")
+    print(result.summary())
     print(f"{'='*65}\n")
     return 0
 

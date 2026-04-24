@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.7.0] - 2026-04-02
+
+### Added
+- **Model pruning** (`isat prune`): Magnitude, percentage, and global pruning strategies. Zero out
+  low-magnitude weights per-layer or globally. Report per-layer sparsity, `--analyze-only` mode
+- **Knowledge distillation** (`isat distill`): Analyze teacher model and generate student configs
+  (tiny/small/medium) with recommended architecture changes, temperature, alpha, training tips
+- **Operator fusion analyzer** (`isat fusion`): Compare raw vs ORT-optimized graph. Identify fused
+  patterns (Conv+BN+Relu, MatMul+Add, LayerNorm, Attention), missed fusion opportunities, unfused
+  compute-heavy ops
+- **Attention profiler** (`isat attention`): Per-head weight norm, entropy, sparsity analysis for
+  transformer models. Identifies prunable heads (bottom 20% importance), estimates speedup
+- **LLM token benchmarker** (`isat llm-bench`): Tokens/second, time-to-first-token (TTFT),
+  inter-token latency (ITL) with P95, prefill vs decode throughput across sequence lengths
+- **Compiler comparison** (`isat compiler-compare`): Benchmark same model across all available
+  execution providers (CPU, MIGraphX, CUDA, TRT, OpenVINO, DML, QNN, CoreML). Compare latency,
+  numerical accuracy vs CPU baseline, speedup. No other open-source tool does this
+- **Inference replay** (`isat replay`): Record production inference requests (inputs + outputs +
+  metadata) to disk. Replay against new model versions for regression testing with output matching
+- **Output drift monitor** (`isat drift`): Detect confidence distribution drift between baseline and
+  current model outputs using KS test, entropy tracking, confidence monitoring
+- **Weight sharing detector** (`isat weight-sharing`): Find identical and near-identical (cosine
+  similarity) weight tensors across layers. Report memory savings from detected sharing
+- **C++ code generator** (`isat codegen`): Generate standalone C++ inference code + CMakeLists.txt
+  from ONNX model. For edge deployment where Python is unavailable
+- CLI expanded to **55 subcommands** (10 new: prune, distill, fusion, attention, llm-bench,
+  compiler-compare, replay, drift, weight-sharing, codegen)
+- 23 new tests (180 total, all passing)
+
 ## [0.6.0] - 2026-04-02
 
 ### Added

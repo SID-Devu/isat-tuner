@@ -76,10 +76,19 @@ def parse_rocminfo() -> Optional[GPUAgent]:
                 agent.lds_size_kb = int(m.group(1))
         elif "Product Name" in line:
             agent.product = line.split(":", 1)[1].strip()
+        elif "Marketing Name" in line:
+            mname = line.split(":", 1)[1].strip()
+            if mname and mname != "N/A" and not agent.product:
+                agent.product = mname
         elif "Vendor Name" in line:
             agent.vendor = line.split(":", 1)[1].strip()
 
-    return agent if agent.gfx_target else None
+    if agent.name and not agent.gfx_target:
+        m = re.search(r"gfx\w+", agent.name)
+        if m:
+            agent.gfx_target = m.group(0)
+
+    return agent if (agent.gfx_target or agent.name) else None
 
 
 def xnack_supported() -> bool:

@@ -75,10 +75,12 @@ class LatencyProfiler:
         model_path: str,
         provider: str = "MIGraphXExecutionProvider",
         steady_state_runs: int = 50,
+        warmup: int = 3,
     ):
         self.model_path = model_path
         self.provider = provider
         self.steady_state_runs = steady_state_runs
+        self.warmup = warmup
 
     def profile(self) -> LatencyBreakdown:
         import onnxruntime as ort
@@ -113,6 +115,10 @@ class LatencyProfiler:
         session.run(None, feed)
         t5 = time.perf_counter()
         first_inference_ms = (t5 - t4) * 1000
+
+        # Warmup iterations (discard results)
+        for _ in range(self.warmup):
+            session.run(None, feed)
 
         # Phase 4: Steady-state latency
         latencies = []

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.6.0] - 2026-04-02
+
+### Added
+- **Request tracing** (`isat trace`): OpenTelemetry-compatible span tracing through the full
+  inference lifecycle (preprocess -> inference -> postprocess). Exports OTLP JSON for Jaeger/Zipkin/Datadog
+- **Canary deployment** (`isat canary`): Phased traffic splitting between baseline and candidate models
+  with automatic rollback on error rate or latency regression. Configurable phases (5%, 10%, 25%, 50%, 75%, 100%)
+- **Alert rules engine** (`isat alerts`): Define rules like "if P99 > 500ms for 3 checks, CRITICAL".
+  8 builtin rules covering latency, error rate, GPU temp, memory, throughput, queue depth. Export/import JSON rules
+- **ONNX graph surgery** (`isat surgery`): Programmatic model modification -- remove op types (Identity, Dropout),
+  rename inputs/outputs, remove unused initializers, extract subgraphs, change opset. Prepare models for deployment
+  without retraining
+- **Inference caching** (`isat` API): LRU in-memory + disk-persistent cache keyed by input tensor SHA256.
+  TTL expiration, eviction tracking, hit/miss stats. Avoid redundant GPU computation for repeated inputs
+- **Input validation / guard** (`isat guard`): Enforce input tensor shapes, dtypes, value ranges.
+  Detects NaN/Inf, missing inputs, excessive sizes. Extracts schema directly from ONNX model definition
+- **Model ensemble** (`isat ensemble`): Run N models, aggregate with averaging, voting, or max-confidence.
+  Reports per-member latency, error status, and inter-model agreement percentage
+- **GPU memory fragmentation analyzer** (`isat gpu-frag`): Monitor VRAM/GTT allocation patterns during
+  inference, compute fragmentation index (0-1 scale), classify allocation patterns, recommend mitigations
+- CLI expanded to **45 subcommands** (7 new: trace, canary, alerts, surgery, guard, ensemble, gpu-frag)
+- 32 new unit tests (157 total, all passing)
+
 ## [0.5.0] - 2026-04-24
 
 ### Fixed

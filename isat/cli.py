@@ -203,6 +203,54 @@ def main(argv: list[str] | None = None) -> int:
     p_mig.add_argument("--from", dest="source", required=True, help="Source provider")
     p_mig.add_argument("--to", dest="target", required=True, help="Target provider")
 
+    # ── shapes ───────────────────────────────────────────────
+    p_shapes = sub.add_parser("shapes", help="Benchmark model across dynamic input shapes")
+    p_shapes.add_argument("model", help="Path to .onnx model")
+    p_shapes.add_argument("--provider", default="CPUExecutionProvider")
+    p_shapes.add_argument("--runs", type=int, default=10)
+
+    # ── download ─────────────────────────────────────────────
+    p_dl = sub.add_parser("download", help="Download ONNX model by name or URL")
+    p_dl.add_argument("model_name", help="Model name (resnet50, mobilenetv2, etc.) or URL")
+    p_dl.add_argument("--output-dir", default=".", help="Output directory")
+    p_dl.add_argument("--list", action="store_true", dest="list_models", help="List available models")
+
+    # ── power ────────────────────────────────────────────────
+    p_pow = sub.add_parser("power", help="Profile power efficiency (perf/watt, energy/inference)")
+    p_pow.add_argument("model", help="Path to .onnx model")
+    p_pow.add_argument("--provider", default="MIGraphXExecutionProvider")
+    p_pow.add_argument("--runs", type=int, default=50)
+
+    # ── memory ───────────────────────────────────────────────
+    p_mem = sub.add_parser("memory", help="Estimate memory usage and predict OOM risk")
+    p_mem.add_argument("model", help="Path to .onnx model")
+
+    # ── abtest ───────────────────────────────────────────────
+    p_ab = sub.add_parser("abtest", help="A/B test two models with statistical rigor")
+    p_ab.add_argument("model_a", help="First model")
+    p_ab.add_argument("model_b", help="Second model")
+    p_ab.add_argument("--provider", default="CPUExecutionProvider")
+    p_ab.add_argument("--runs", type=int, default=50)
+    p_ab.add_argument("--name-a", default="A")
+    p_ab.add_argument("--name-b", default="B")
+
+    # ── visualize ────────────────────────────────────────────
+    p_viz = sub.add_parser("visualize", help="Visualize ONNX graph (DOT, ASCII, histogram)")
+    p_viz.add_argument("model", help="Path to .onnx model")
+    p_viz.add_argument("--format", choices=["dot", "ascii", "histogram"], default="ascii")
+    p_viz.add_argument("--output", default="", help="Output file (for DOT)")
+
+    # ── snapshot ─────────────────────────────────────────────
+    p_snap = sub.add_parser("snapshot", help="Capture environment state for reproducibility")
+    p_snap.add_argument("--model", default="", help="Optional model to include hash")
+    p_snap.add_argument("--output", default="isat_snapshot.json")
+
+    # ── batch ────────────────────────────────────────────────
+    p_batch = sub.add_parser("batch", help="Find optimal batch size (latency vs throughput)")
+    p_batch.add_argument("model", help="Path to .onnx model")
+    p_batch.add_argument("--provider", default="CPUExecutionProvider")
+    p_batch.add_argument("--sizes", default="1,2,4,8,16,32", help="Comma-separated batch sizes")
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -241,6 +289,14 @@ def main(argv: list[str] | None = None) -> int:
             "warmup": _cmd_warmup,
             "cache": _cmd_cache,
             "migrate": _cmd_migrate,
+            "shapes": _cmd_shapes,
+            "download": _cmd_download,
+            "power": _cmd_power,
+            "memory": _cmd_memory,
+            "abtest": _cmd_abtest,
+            "visualize": _cmd_visualize,
+            "snapshot": _cmd_snapshot,
+            "batch": _cmd_batch,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -1047,6 +1103,141 @@ def _cmd_migrate(args) -> int:
     print(f"{'='*70}")
     print(plan.summary())
     print(f"{'='*70}\n")
+    return 0
+
+
+def _cmd_shapes(args) -> int:
+    from isat.shapes.handler import DynamicShapeHandler
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    handler = DynamicShapeHandler(args.model, provider=args.provider, runs=args.runs)
+    profile = handler.sweep()
+    print(f"\n{'='*70}")
+    print(f"  DYNAMIC SHAPE ANALYSIS")
+    print(f"{'='*70}")
+    print(profile.summary())
+    print(f"{'='*70}\n")
+    return 0
+
+
+def _cmd_download(args) -> int:
+    from isat.hub.downloader import ModelHub
+    hub = ModelHub()
+    if args.list_models:
+        models = hub.list_available()
+        print(f"\n{'='*60}")
+        print(f"  AVAILABLE MODELS")
+        print(f"{'='*60}")
+        for m in models:
+            print(f"  {m['name']:<20} opset {m['opset']:<4} {m['description']}")
+        cached = hub.list_cached()
+        if cached:
+            print(f"\n  Cached locally:")
+            for c in cached:
+                print(f"    {c['name']} ({c['size_mb']:.1f} MB)")
+        print(f"{'='*60}\n")
+        return 0
+    result = hub.download(args.model_name, output_dir=args.output_dir)
+    status = "cached" if result.cached else "downloaded"
+    print(f"\n  {result.model_name} ({result.size_mb:.1f} MB) [{status}]")
+    print(f"  Path: {result.local_path}\n")
+    return 0
+
+
+def _cmd_power(args) -> int:
+    from isat.power.profiler import PowerProfiler
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    profiler = PowerProfiler(args.model, provider=args.provider, runs=args.runs)
+    profile = profiler.profile()
+    print(f"\n{'='*60}")
+    print(f"  POWER EFFICIENCY PROFILE")
+    print(f"{'='*60}")
+    print(profile.summary())
+    print(f"{'='*60}\n")
+    return 0
+
+
+def _cmd_memory(args) -> int:
+    from isat.memory.planner import MemoryPlanner
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    planner = MemoryPlanner(args.model)
+    plan = planner.plan()
+    print(f"\n{'='*70}")
+    print(f"  MEMORY PLAN")
+    print(f"{'='*70}")
+    print(plan.summary())
+    print(f"{'='*70}\n")
+    return 0
+
+
+def _cmd_abtest(args) -> int:
+    from isat.abtesting.compare import ABTest
+    for p in [args.model_a, args.model_b]:
+        if not Path(p).exists():
+            print(f"Error: model not found: {p}")
+            return 1
+    test = ABTest(args.model_a, args.model_b, provider=args.provider, runs=args.runs)
+    result = test.run(name_a=args.name_a, name_b=args.name_b)
+    print(f"\n{'='*65}")
+    print(f"  A/B TEST RESULTS")
+    print(f"{'='*65}")
+    print(result.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_visualize(args) -> int:
+    from isat.visualizer.graph import GraphVisualizer
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    viz = GraphVisualizer(args.model)
+    if args.format == "dot":
+        output = args.output or "graph.dot"
+        viz.to_dot(output)
+        print(f"DOT graph saved to {output}")
+        print(f"Render with: dot -Tpng {output} -o graph.png")
+    elif args.format == "histogram":
+        print(viz.op_histogram())
+    else:
+        print(viz.to_ascii())
+    return 0
+
+
+def _cmd_snapshot(args) -> int:
+    from isat.snapshot.capture import EnvSnapshot
+    snap = EnvSnapshot()
+    data = snap.capture(model_path=args.model)
+    path = snap.save(data, args.output)
+    print(f"\n  Snapshot saved to {path}")
+    print(f"  System   : {data['system']['os']} {data['system']['os_release']}")
+    print(f"  Python   : {data['python']['version']}")
+    print(f"  ISAT     : {data['isat_version']}")
+    print(f"  Packages : {', '.join(f'{k}={v}' for k,v in data['software'].items())}")
+    if data.get("model"):
+        print(f"  Model    : {data['model']['path']} (SHA256: {data['model']['sha256'][:16]}...)")
+    print()
+    return 0
+
+
+def _cmd_batch(args) -> int:
+    from isat.scheduler.batch import BatchScheduler
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    sizes = [int(x) for x in args.sizes.split(",")]
+    scheduler = BatchScheduler(args.model, provider=args.provider, batch_sizes=sizes)
+    profile = scheduler.profile()
+    print(f"\n{'='*65}")
+    print(f"  BATCH SIZE ANALYSIS")
+    print(f"{'='*65}")
+    print(profile.summary())
+    print(f"{'='*65}\n")
     return 0
 
 

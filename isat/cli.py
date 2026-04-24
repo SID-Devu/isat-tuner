@@ -152,6 +152,57 @@ def main(argv: list[str] | None = None) -> int:
     p_zoo = sub.add_parser("zoo", help="List pre-tuned model configurations")
     p_zoo.add_argument("--search", default=None, help="Search for a specific model")
 
+    # ── doctor ────────────────────────────────────────────────
+    p_doc = sub.add_parser("doctor", help="Pre-flight system health and compatibility check")
+    p_doc.add_argument("--model", default=None, help="Optional model to check compatibility")
+
+    # ── profile ──────────────────────────────────────────────
+    p_prof = sub.add_parser("profile", help="Decompose latency into phases (load/compile/inference)")
+    p_prof.add_argument("model", help="Path to .onnx model")
+    p_prof.add_argument("--runs", type=int, default=50, help="Steady-state runs")
+    p_prof.add_argument("--provider", default="MIGraphXExecutionProvider")
+
+    # ── diff ─────────────────────────────────────────────────
+    p_diff = sub.add_parser("diff", help="Structural diff between two ONNX models")
+    p_diff.add_argument("model_a", help="First model")
+    p_diff.add_argument("model_b", help="Second model")
+
+    # ── cost ─────────────────────────────────────────────────
+    p_cost = sub.add_parser("cost", help="Estimate cloud inference cost")
+    p_cost.add_argument("--latency", type=float, required=True, help="Mean latency in ms")
+    p_cost.add_argument("--gpu", default="a10g", help="GPU type (a10g, t4, a100_40gb, h100_80gb, etc.)")
+    p_cost.add_argument("--batch-size", type=int, default=1)
+    p_cost.add_argument("--list-gpus", action="store_true", help="List available GPU pricing")
+
+    # ── sla ──────────────────────────────────────────────────
+    p_sla = sub.add_parser("sla", help="Validate inference against SLA requirements")
+    p_sla.add_argument("--template", choices=["realtime", "batch", "edge", "llm", "mobile"], default="realtime")
+    p_sla.add_argument("--p50", type=float, default=0, help="P50 latency ms")
+    p_sla.add_argument("--p95", type=float, default=0, help="P95 latency ms")
+    p_sla.add_argument("--p99", type=float, default=0, help="P99 latency ms")
+    p_sla.add_argument("--throughput", type=float, default=0, help="Throughput RPS")
+    p_sla.add_argument("--memory", type=float, default=0, help="Memory MB")
+    p_sla.add_argument("--cold-start", type=float, default=0, help="Cold start ms")
+    p_sla.add_argument("--list-templates", action="store_true")
+
+    # ── warmup ───────────────────────────────────────────────
+    p_warm = sub.add_parser("warmup", help="Analyze warmup behavior and find optimal iterations")
+    p_warm.add_argument("model", help="Path to .onnx model")
+    p_warm.add_argument("--max-iterations", type=int, default=100)
+    p_warm.add_argument("--provider", default="MIGraphXExecutionProvider")
+
+    # ── cache ────────────────────────────────────────────────
+    p_cache = sub.add_parser("cache", help="Manage compilation cache (MIGraphX/ORT)")
+    p_cache.add_argument("action", choices=["stats", "clean", "warm"], help="Cache action")
+    p_cache.add_argument("--model", default=None, help="Model path (for warm)")
+    p_cache.add_argument("--max-age-hours", type=float, default=168, help="Max cache age (for clean)")
+    p_cache.add_argument("--dry-run", action="store_true")
+
+    # ── migrate ──────────────────────────────────────────────
+    p_mig = sub.add_parser("migrate", help="Generate migration plan between providers")
+    p_mig.add_argument("--from", dest="source", required=True, help="Source provider")
+    p_mig.add_argument("--to", dest="target", required=True, help="Target provider")
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -182,6 +233,14 @@ def main(argv: list[str] | None = None) -> int:
             "leak-check": _cmd_leak_check,
             "init": _cmd_init,
             "zoo": _cmd_zoo,
+            "doctor": _cmd_doctor,
+            "profile": _cmd_profile,
+            "diff": _cmd_diff,
+            "cost": _cmd_cost,
+            "sla": _cmd_sla,
+            "warmup": _cmd_warmup,
+            "cache": _cmd_cache,
+            "migrate": _cmd_migrate,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -774,6 +833,219 @@ def _cmd_zoo(args) -> int:
     for m in models:
         print(f"  {m['pattern']:<25} {m['class']:<15} {m['precision']:<10} {m['description']}")
     print(f"\n  Usage: isat zoo --search <model_name>")
+    print(f"{'='*70}\n")
+    return 0
+
+
+def _cmd_doctor(args) -> int:
+    """System health and compatibility check."""
+    from isat.compat.scanner import CompatScanner
+    from isat.health.checker import HealthChecker
+
+    print(f"\n{'='*60}")
+    print(f"  ISAT DOCTOR -- System Compatibility & Health")
+    print(f"{'='*60}")
+
+    scanner = CompatScanner(model_path=args.model)
+    compat = scanner.scan()
+    print(f"\n  Compatibility Checks:")
+    print(compat.summary())
+
+    checker = HealthChecker()
+    health = checker.check()
+    print(f"\n  Health Checks:")
+    print(health.summary())
+
+    print(f"{'='*60}\n")
+    return 0 if compat.ok and health.ready else 1
+
+
+def _cmd_profile(args) -> int:
+    """Latency decomposition profiling."""
+    from isat.profiler.latency import LatencyProfiler
+
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+
+    profiler = LatencyProfiler(args.model, provider=args.provider, steady_state_runs=args.runs)
+    breakdown = profiler.profile()
+
+    print(f"\n{'='*60}")
+    print(f"  LATENCY BREAKDOWN")
+    print(f"{'='*60}")
+    print(f"  Model          : {breakdown.model_path}")
+    print(f"  Size           : {breakdown.model_size_mb:.1f} MB")
+    print(f"  Provider       : {breakdown.provider}")
+    print(f"  Peak RSS       : {breakdown.peak_rss_mb:.0f} MB")
+    print(f"  GPU VRAM (post): {breakdown.gpu_vram_after_load_mb:.0f} MB")
+    print()
+    print(breakdown.summary_table())
+    print(f"\n  Steady state: {breakdown.steady_state_mean_ms:.2f} ms "
+          f"(P50={breakdown.steady_state_p50_ms:.2f} "
+          f"P95={breakdown.steady_state_p95_ms:.2f} "
+          f"P99={breakdown.steady_state_p99_ms:.2f})")
+    print(f"{'='*60}\n")
+    return 0
+
+
+def _cmd_diff(args) -> int:
+    """Structural model diff."""
+    from isat.diff.model_diff import ModelDiff
+
+    for p in [args.model_a, args.model_b]:
+        if not Path(p).exists():
+            print(f"Error: model not found: {p}")
+            return 1
+
+    differ = ModelDiff()
+    result = differ.compare(args.model_a, args.model_b)
+
+    print(f"\n{'='*70}")
+    print(f"  MODEL DIFF")
+    print(f"{'='*70}")
+    print(f"  Model A: {result.model_a}")
+    print(f"  Model B: {result.model_b}")
+    if result.identical:
+        print(f"\n  Models are structurally IDENTICAL")
+    else:
+        print()
+        print(result.summary())
+    print(f"{'='*70}\n")
+    return 0
+
+
+def _cmd_cost(args) -> int:
+    """Cloud cost estimation."""
+    from isat.cost.estimator import CostEstimator
+
+    estimator = CostEstimator()
+
+    if args.list_gpus:
+        gpus = estimator.list_gpus()
+        print(f"\n{'='*70}")
+        print(f"  AVAILABLE GPU PRICING")
+        print(f"{'='*70}")
+        print(f"\n  {'GPU':<20} {'$/hr':>8} {'Provider':<10} {'Instance'}")
+        print(f"  {'-'*20} {'-'*8} {'-'*10} {'-'*25}")
+        for g in gpus:
+            print(f"  {g['name']:<20} ${g['hourly']:>6.2f} {g['provider']:<10} {g['instance']}")
+        print(f"{'='*70}\n")
+        return 0
+
+    estimate = estimator.estimate(args.latency, gpu_type=args.gpu, batch_size=args.batch_size)
+    print(f"\n{'='*60}")
+    print(f"  INFERENCE COST ESTIMATE")
+    print(f"{'='*60}")
+    print(estimate.summary())
+    print(f"{'='*60}\n")
+    return 0
+
+
+def _cmd_sla(args) -> int:
+    """SLA validation."""
+    from isat.sla.validator import SLAValidator
+
+    if args.list_templates:
+        templates = SLAValidator.list_templates()
+        print(f"\n{'='*60}")
+        print(f"  SLA TEMPLATES")
+        print(f"{'='*60}")
+        for name, reqs in templates.items():
+            print(f"\n  [{name}]")
+            for r in reqs:
+                print(f"    {r['name']}: {r['metric']} {r['op']} {r['threshold']} {r['unit']}")
+        print(f"{'='*60}\n")
+        return 0
+
+    validator = SLAValidator(template=args.template)
+    metrics = {}
+    if args.p50: metrics["p50_ms"] = args.p50
+    if args.p95: metrics["p95_ms"] = args.p95
+    if args.p99: metrics["p99_ms"] = args.p99
+    if args.throughput: metrics["throughput_rps"] = args.throughput
+    if args.memory: metrics["memory_mb"] = args.memory
+    if args.cold_start: metrics["cold_start_ms"] = args.cold_start
+
+    if not metrics:
+        print("Error: provide at least one metric (--p50, --p95, --p99, --throughput, --memory, --cold-start)")
+        return 1
+
+    result = validator.validate(metrics)
+    print(f"\n{'='*70}")
+    print(f"  SLA VALIDATION (template: {args.template})")
+    print(f"{'='*70}")
+    print(result.summary())
+    print(f"{'='*70}\n")
+    return 1 if not result.all_passed else 0
+
+
+def _cmd_warmup(args) -> int:
+    """Warmup analysis."""
+    from isat.warmup.analyzer import WarmupAnalyzer
+
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+
+    analyzer = WarmupAnalyzer(
+        args.model, provider=args.provider, max_iterations=args.max_iterations,
+    )
+    profile = analyzer.analyze()
+
+    print(f"\n{'='*60}")
+    print(f"  WARMUP ANALYSIS")
+    print(f"{'='*60}")
+    print(profile.summary())
+    print(f"{'='*60}\n")
+    return 0
+
+
+def _cmd_cache(args) -> int:
+    """Cache management."""
+    from isat.cache.manager import CacheManager
+
+    mgr = CacheManager()
+
+    if args.action == "stats":
+        stats = mgr.stats()
+        print(f"\n{'='*60}")
+        print(f"  COMPILATION CACHE")
+        print(f"{'='*60}")
+        print(stats.summary())
+        print(f"{'='*60}\n")
+
+    elif args.action == "clean":
+        result = mgr.clean(max_age_hours=args.max_age_hours, dry_run=args.dry_run)
+        prefix = "[DRY RUN] " if result["dry_run"] else ""
+        print(f"\n{prefix}Removed {result['entries_removed']} entries, freed {result['space_freed_mb']:.1f} MB")
+
+    elif args.action == "warm":
+        if not args.model:
+            print("Error: --model required for cache warm")
+            return 1
+        elapsed = mgr.warm(args.model)
+        print(f"\nCache warmed in {elapsed:.1f}s")
+
+    return 0
+
+
+def _cmd_migrate(args) -> int:
+    """Provider migration planning."""
+    from isat.migration.tool import MigrationTool
+
+    tool = MigrationTool()
+
+    import os
+    current_env = {k: v for k, v in os.environ.items()
+                   if any(x in k.upper() for x in ["MIGRAPHX", "HSA", "ORT_TENSOR", "CUDA"])}
+
+    plan = tool.plan(args.source, args.target, current_env=current_env)
+
+    print(f"\n{'='*70}")
+    print(f"  MIGRATION PLAN")
+    print(f"{'='*70}")
+    print(plan.summary())
     print(f"{'='*70}\n")
     return 0
 

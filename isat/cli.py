@@ -39,6 +39,31 @@ BANNER = (
 )
 
 
+def _detect_provider() -> str:
+    """Auto-detect the best available ORT execution provider."""
+    try:
+        import onnxruntime as ort
+        available = ort.get_available_providers()
+    except ImportError:
+        return "CPUExecutionProvider"
+    preference = [
+        "MIGraphXExecutionProvider",
+        "TensorrtExecutionProvider",
+        "CUDAExecutionProvider",
+        "ROCMExecutionProvider",
+        "DmlExecutionProvider",
+        "OpenVINOExecutionProvider",
+        "CPUExecutionProvider",
+    ]
+    for ep in preference:
+        if ep in available:
+            return ep
+    return available[0] if available else "CPUExecutionProvider"
+
+
+_DEFAULT_PROVIDER = _detect_provider()
+
+
 def _check_path_issue() -> str | None:
     """Return a help message if the 'isat' script is installed but not on PATH."""
     local_bin = Path.home() / ".local" / "bin"
@@ -78,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     p_tune.add_argument("--runs", type=int, default=5, help="Measured iterations (default: 5)")
     p_tune.add_argument("--cooldown", type=float, default=60.0, help="Cooldown between configs (seconds)")
     p_tune.add_argument("--max-configs", type=int, default=0, help="Limit configs to test (0=unlimited)")
-    p_tune.add_argument("--provider", default="MIGraphXExecutionProvider",
+    p_tune.add_argument("--provider", default=_DEFAULT_PROVIDER,
                         help="ORT execution provider")
     p_tune.add_argument("--skip-precision", action="store_true", help="Skip precision search dimension")
     p_tune.add_argument("--skip-graph", action="store_true", help="Skip graph transform search dimension")
@@ -163,13 +188,13 @@ def main(argv: list[str] | None = None) -> int:
     p_stress.add_argument("--pattern", choices=["sustained", "burst", "ramp"], default="sustained")
     p_stress.add_argument("--duration", type=float, default=60.0, help="Duration in seconds (sustained)")
     p_stress.add_argument("--concurrency", type=int, default=4, help="Concurrent threads")
-    p_stress.add_argument("--provider", default="MIGraphXExecutionProvider")
+    p_stress.add_argument("--provider", default=_DEFAULT_PROVIDER)
 
     # ── leak-check ────────────────────────────────────────────
     p_leak = sub.add_parser("leak-check", help="Detect memory leaks during inference")
     p_leak.add_argument("model", help="Path to .onnx model")
     p_leak.add_argument("--iterations", type=int, default=1000, help="Number of iterations")
-    p_leak.add_argument("--provider", default="MIGraphXExecutionProvider")
+    p_leak.add_argument("--provider", default=_DEFAULT_PROVIDER)
 
     # ── init ──────────────────────────────────────────────────
     p_init = sub.add_parser("init", help="Generate a default isat.yaml config file")
@@ -188,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     p_prof.add_argument("model", help="Path to .onnx model")
     p_prof.add_argument("--runs", type=int, default=50, help="Steady-state runs")
     p_prof.add_argument("--warmup", type=int, default=3, help="Warmup iterations before profiling")
-    p_prof.add_argument("--provider", default="MIGraphXExecutionProvider")
+    p_prof.add_argument("--provider", default=_DEFAULT_PROVIDER)
 
     # ── diff ─────────────────────────────────────────────────
     p_diff = sub.add_parser("diff", help="Structural diff between two ONNX models")
@@ -217,7 +242,7 @@ def main(argv: list[str] | None = None) -> int:
     p_warm = sub.add_parser("warmup", help="Analyze warmup behavior and find optimal iterations")
     p_warm.add_argument("model", help="Path to .onnx model")
     p_warm.add_argument("--max-iterations", type=int, default=100)
-    p_warm.add_argument("--provider", default="MIGraphXExecutionProvider")
+    p_warm.add_argument("--provider", default=_DEFAULT_PROVIDER)
 
     # ── cache ────────────────────────────────────────────────
     p_cache = sub.add_parser("cache", help="Manage compilation cache (MIGraphX/ORT)")
@@ -246,7 +271,7 @@ def main(argv: list[str] | None = None) -> int:
     # ── power ────────────────────────────────────────────────
     p_pow = sub.add_parser("power", help="Profile power efficiency (perf/watt, energy/inference)")
     p_pow.add_argument("model", help="Path to .onnx model")
-    p_pow.add_argument("--provider", default="MIGraphXExecutionProvider")
+    p_pow.add_argument("--provider", default=_DEFAULT_PROVIDER)
     p_pow.add_argument("--runs", type=int, default=50)
 
     # ── memory ───────────────────────────────────────────────
@@ -451,6 +476,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command is None:
         print(BANNER)
+        print(f"  Provider: {_DEFAULT_PROVIDER}")
+        try:
+            import onnxruntime as ort
+            print(f"  ORT:      {ort.__version__}  ({', '.join(ort.get_available_providers())})")
+        except ImportError:
+            print("  WARNING:  onnxruntime not found!")
+            print("            pip install onnxruntime              # CPU only")
+            print("            pip install onnxruntime-migraphx     # AMD MIGraphX")
+            print("            pip install onnxruntime-gpu          # NVIDIA CUDA")
+        print()
         path_msg = _check_path_issue()
         if path_msg:
             print(path_msg)

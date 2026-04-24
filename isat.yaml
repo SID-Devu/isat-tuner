@@ -1,0 +1,57 @@
+# ISAT Tuning Configuration
+# https://github.com/SID-Devu/isat-tuner
+
+model_path: "model.onnx"
+model_name: ""
+provider: "MIGraphXExecutionProvider"
+profile: ""
+description: ""
+tags: []
+
+search:
+  memory: true
+  kernel: true
+  precision: true
+  graph: true
+  batch: false
+  threading: false
+  provider: false
+  bayesian: false
+  max_configs: 0
+  xnack_values: [0, 1]
+  gemm_providers: ["default", "rocblas"]
+  precisions: ["fp32", "fp16"]
+  batch_sizes: [1]
+  ort_opt_levels: [99]
+
+benchmark:
+  warmup: 3
+  runs: 10
+  cooldown: 60.0
+  outlier_method: "mad"
+  outlier_threshold: 3.5
+  remove_outliers: true
+
+thermal:
+  max_temp_c: 85.0
+  target_temp_c: 55.0
+  poll_interval: 2.0
+  abort_on_throttle: false
+
+output:
+  directory: "isat_output"
+  formats: ["json", "html", "console", "env"]
+  database: "isat_results.db"
+  prometheus_path: ""
+  triton_output: ""
+  save_optimized_model: false
+
+gates:
+  max_latency_ms: 0
+  max_p95_ms: 0
+  max_p99_ms: 0
+  min_throughput_fps: 0
+  fail_on_regression: false
+  regression_threshold_pct: 10.0
+
+env_overrides: {}

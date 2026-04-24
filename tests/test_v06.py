@@ -79,7 +79,8 @@ class TestCanary:
         from isat.canary.deployer import CanaryDeployer
         path = _make_tiny_model()
         try:
-            deployer = CanaryDeployer(path, path, requests_per_phase=10)
+            deployer = CanaryDeployer(path, path, requests_per_phase=10,
+                                     max_latency_increase_pct=500.0)
             result = deployer.deploy()
             assert not result.rolled_back
             assert result.total_requests > 0

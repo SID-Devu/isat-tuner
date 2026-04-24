@@ -265,7 +265,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── download ─────────────────────────────────────────────
     p_dl = sub.add_parser("download", help="Download ONNX model by name or URL")
-    p_dl.add_argument("model_name", help="Model name (resnet50, mobilenetv2, etc.) or URL")
+    p_dl.add_argument("model_name", nargs="?", default=None,
+                       help="Model name (resnet50, mobilenetv2, etc.) or URL")
     p_dl.add_argument("--output-dir", default=".", help="Output directory")
     p_dl.add_argument("--list", action="store_true", dest="list_models", help="List available models")
 
@@ -1398,6 +1399,9 @@ def _cmd_download(args) -> int:
                 print(f"    {c['name']} ({c['size_mb']:.1f} MB)")
         print(f"{'='*60}\n")
         return 0
+    if not args.model_name:
+        print("Error: model_name is required (unless using --list)")
+        return 1
     result = hub.download(args.model_name, output_dir=args.output_dir)
     status = "cached" if result.cached else "downloaded"
     print(f"\n  {result.model_name} ({result.size_mb:.1f} MB) [{status}]")

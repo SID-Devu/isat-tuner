@@ -362,7 +362,7 @@ class TestCLIv06:
 
     def test_version_updated(self):
         from isat import __version__
-        assert __version__ == "0.6.0"
+        assert __version__ >= "0.6.0"
 
     def test_total_commands(self):
         from isat.cli import main

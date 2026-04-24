@@ -307,6 +307,56 @@ def main(argv: list[str] | None = None) -> int:
     p_rgy.add_argument("--version-b", default="", help="Second version (for diff)")
     p_rgy.add_argument("--db", default="isat_registry.db")
 
+    # ── tracing ────────────────────────────────────────────
+    p_trace = sub.add_parser("trace", help="Trace inference requests (OpenTelemetry-compatible)")
+    p_trace.add_argument("model", help="Path to .onnx model")
+    p_trace.add_argument("--provider", default="CPUExecutionProvider")
+    p_trace.add_argument("--runs", type=int, default=10)
+    p_trace.add_argument("--export", default="", help="Export traces to OTLP JSON file")
+
+    # ── canary ─────────────────────────────────────────────
+    p_canary = sub.add_parser("canary", help="Canary deployment between two model versions")
+    p_canary.add_argument("baseline", help="Baseline model path")
+    p_canary.add_argument("canary_model", help="Canary model path")
+    p_canary.add_argument("--provider", default="CPUExecutionProvider")
+    p_canary.add_argument("--requests-per-phase", type=int, default=50)
+    p_canary.add_argument("--max-error-rate", type=float, default=0.05)
+    p_canary.add_argument("--max-latency-increase", type=float, default=20.0, help="Max pct latency increase")
+
+    # ── alerts ─────────────────────────────────────────────
+    p_alert = sub.add_parser("alerts", help="Inference alert rules engine")
+    p_alert.add_argument("action", choices=["list", "check", "export"], help="Alert action")
+    p_alert.add_argument("--metrics-json", default="", help="JSON string of metrics for check")
+    p_alert.add_argument("--output", default="isat_alert_rules.json")
+
+    # ── surgery ────────────────────────────────────────────
+    p_surg = sub.add_parser("surgery", help="ONNX graph surgery (remove/rename/extract)")
+    p_surg.add_argument("model", help="Path to .onnx model")
+    p_surg.add_argument("--remove-op", action="append", default=[], help="Remove all nodes of this op type")
+    p_surg.add_argument("--remove-unused", action="store_true", help="Remove unused initializers")
+    p_surg.add_argument("--rename-input", nargs=2, metavar=("OLD", "NEW"), action="append", default=[])
+    p_surg.add_argument("--rename-output", nargs=2, metavar=("OLD", "NEW"), action="append", default=[])
+    p_surg.add_argument("--change-opset", type=int, default=0)
+    p_surg.add_argument("--output", default="", help="Output model path")
+
+    # ── guard ──────────────────────────────────────────────
+    p_guard = sub.add_parser("guard", help="Validate inference inputs against model schema")
+    p_guard.add_argument("model", help="Path to .onnx model")
+    p_guard.add_argument("--show-schema", action="store_true", help="Show input schema only")
+
+    # ── ensemble ───────────────────────────────────────────
+    p_ens = sub.add_parser("ensemble", help="Run model ensemble with aggregation")
+    p_ens.add_argument("models", nargs="+", help="model_name:path[:weight] entries")
+    p_ens.add_argument("--strategy", choices=["average", "vote", "max_confidence"], default="average")
+    p_ens.add_argument("--provider", default="CPUExecutionProvider")
+    p_ens.add_argument("--runs", type=int, default=5)
+
+    # ── gpu-frag ───────────────────────────────────────────
+    p_frag = sub.add_parser("gpu-frag", help="GPU memory fragmentation analysis")
+    p_frag.add_argument("model", help="Path to .onnx model")
+    p_frag.add_argument("--provider", default="CPUExecutionProvider")
+    p_frag.add_argument("--runs", type=int, default=200)
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -361,6 +411,13 @@ def main(argv: list[str] | None = None) -> int:
             "pipeline": _cmd_pipeline,
             "recommend": _cmd_recommend,
             "registry": _cmd_registry,
+            "trace": _cmd_trace,
+            "canary": _cmd_canary,
+            "alerts": _cmd_alerts,
+            "surgery": _cmd_surgery,
+            "guard": _cmd_guard,
+            "ensemble": _cmd_ensemble,
+            "gpu-frag": _cmd_gpu_frag,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -1530,6 +1587,195 @@ def _cmd_registry(args) -> int:
         print()
         return 0
 
+    return 0
+
+
+def _cmd_trace(args) -> int:
+    from isat.tracing.tracer import InferenceTracer
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    tracer = InferenceTracer()
+    traces = tracer.trace_inference(args.model, provider=args.provider, runs=args.runs)
+    stats = tracer.get_stats()
+    print(f"\n{'='*65}")
+    print(f"  INFERENCE TRACE ({args.runs} requests)")
+    print(f"{'='*65}")
+    for t in traces[:3]:
+        print(t.summary())
+        print()
+    if len(traces) > 3:
+        print(f"  ... and {len(traces) - 3} more traces")
+    print(f"\n  Aggregate: e2e mean={stats['e2e_mean_ms']:.2f}ms "
+          f"p95={stats['e2e_p95_ms']:.2f}ms "
+          f"inference={stats['inference_mean_ms']:.2f}ms")
+    if args.export:
+        path = tracer.export_otlp_json(args.export)
+        print(f"  Exported to: {path}")
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_canary(args) -> int:
+    from isat.canary.deployer import CanaryDeployer
+    for p in [args.baseline, args.canary_model]:
+        if not Path(p).exists():
+            print(f"Error: model not found: {p}")
+            return 1
+    deployer = CanaryDeployer(
+        args.baseline, args.canary_model, provider=args.provider,
+        requests_per_phase=args.requests_per_phase,
+        max_error_rate=args.max_error_rate,
+        max_latency_increase_pct=args.max_latency_increase,
+    )
+    print(f"Running canary deployment...")
+    result = deployer.deploy()
+    print(f"\n{'='*70}")
+    print(f"  CANARY DEPLOYMENT RESULT")
+    print(f"{'='*70}")
+    print(result.summary())
+    print(f"{'='*70}\n")
+    return 1 if result.rolled_back else 0
+
+
+def _cmd_alerts(args) -> int:
+    from isat.alerts.engine import AlertEngine
+    engine = AlertEngine()
+    if args.action == "list":
+        rules = engine.list_builtin()
+        print(f"\n{'='*70}")
+        print(f"  BUILTIN ALERT RULES")
+        print(f"{'='*70}")
+        print(f"\n  {'Name':<30} {'Metric':<20} {'Op':>3} {'Threshold':>10} {'Severity':<10}")
+        print(f"  {'-'*30} {'-'*20} {'-'*3} {'-'*10} {'-'*10}")
+        for r in rules:
+            print(f"  {r['name']:<30} {r['metric']:<20} {r['operator']:>3} "
+                  f"{r['threshold']:>10.1f} {r['severity']:<10}")
+        print(f"{'='*70}\n")
+        return 0
+    elif args.action == "check":
+        if not args.metrics_json:
+            print("Error: --metrics-json required for check")
+            return 1
+        metrics = json.loads(args.metrics_json)
+        alerts = engine.check(metrics)
+        status = engine.status()
+        print(f"\n{'='*65}")
+        print(f"  ALERT CHECK")
+        print(f"{'='*65}")
+        print(status.summary())
+        print(f"{'='*65}\n")
+        return 1 if alerts else 0
+    elif args.action == "export":
+        engine.export_rules(args.output)
+        print(f"Exported {len(engine.rules)} rules to {args.output}")
+        return 0
+    return 0
+
+
+def _cmd_surgery(args) -> int:
+    from isat.surgery.graph import GraphSurgeon
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    surgeon = GraphSurgeon(args.model)
+    has_ops = False
+    for op in args.remove_op:
+        count = surgeon.remove_op_type(op)
+        print(f"  Removed {count} '{op}' nodes")
+        has_ops = True
+    if args.remove_unused:
+        count = surgeon.remove_unused_initializers()
+        print(f"  Removed {count} unused initializers")
+        has_ops = True
+    for old, new in args.rename_input:
+        surgeon.rename_input(old, new)
+        has_ops = True
+    for old, new in args.rename_output:
+        surgeon.rename_output(old, new)
+        has_ops = True
+    if args.change_opset:
+        surgeon.change_opset(args.change_opset)
+        has_ops = True
+    if not has_ops:
+        stats = surgeon.get_stats()
+        print(f"\n  Graph stats: {stats['nodes']} nodes, {stats['initializers']} initializers")
+        print(f"  Inputs : {stats['inputs']}")
+        print(f"  Outputs: {stats['outputs']}")
+        print(f"  Ops    : {', '.join(sorted(stats['ops']))}\n")
+        return 0
+    output = args.output or args.model.replace(".onnx", "_surgery.onnx")
+    result = surgeon.save(output)
+    print(f"\n{'='*65}")
+    print(f"  GRAPH SURGERY RESULT")
+    print(f"{'='*65}")
+    print(result.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_guard(args) -> int:
+    from isat.guard.validator import InputGuard
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    guard = InputGuard(model_path=args.model)
+    if args.show_schema:
+        print(f"\n{'='*65}")
+        print(f"  INPUT SCHEMA: {Path(args.model).name}")
+        print(f"{'='*65}")
+        for s in guard.schemas:
+            print(f"  {s.name:<30} shape={s.shape}  dtype={s.dtype}")
+        print(f"{'='*65}\n")
+        return 0
+    import numpy as np
+    feed = {}
+    for s in guard.schemas:
+        shape = [d if isinstance(d, int) else 1 for d in s.shape]
+        dtype_map = {"float32": np.float32, "float16": np.float16,
+                     "int64": np.int64, "int32": np.int32}
+        dtype = dtype_map.get(s.dtype, np.float32)
+        feed[s.name] = np.random.randn(*shape).astype(dtype)
+    result = guard.validate(feed)
+    print(f"\n{'='*65}")
+    print(f"  INPUT VALIDATION")
+    print(f"{'='*65}")
+    print(result.summary())
+    print(f"{'='*65}\n")
+    return 0 if result.valid else 1
+
+
+def _cmd_ensemble(args) -> int:
+    from isat.ensemble.runner import ModelEnsemble
+    models = []
+    for entry in args.models:
+        parts = entry.split(":")
+        name = parts[0]
+        path = parts[1] if len(parts) > 1 else parts[0]
+        weight = float(parts[2]) if len(parts) > 2 else 1.0
+        models.append((name, path, weight))
+    ensemble = ModelEnsemble(models, provider=args.provider, strategy=args.strategy)
+    result = ensemble.run(runs=args.runs)
+    print(f"\n{'='*65}")
+    print(f"  MODEL ENSEMBLE RESULT")
+    print(f"{'='*65}")
+    print(result.summary())
+    print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_gpu_frag(args) -> int:
+    from isat.gpu_frag.analyzer import FragmentationAnalyzer
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    analyzer = FragmentationAnalyzer(args.model, provider=args.provider, runs=args.runs)
+    report = analyzer.analyze()
+    print(f"\n{'='*65}")
+    print(f"  GPU MEMORY FRAGMENTATION ANALYSIS")
+    print(f"{'='*65}")
+    print(report.summary())
+    print(f"{'='*65}\n")
     return 0
 
 

@@ -3,7 +3,7 @@
 ## Development Setup
 
 ```bash
-git clone https://github.com/SID-Devu/isat.git
+git clone https://github.com/SID-Devu/isat-tuner.git
 cd isat
 pip install -e ".[dev,all]"
 ```

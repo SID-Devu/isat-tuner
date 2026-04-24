@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isat-tuner"
-version = "0.1.1"
+version = "0.2.0"
 description = "Inference Stack Auto-Tuner -- automatically find the fastest inference configuration for any ONNX model on any GPU"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -44,12 +44,14 @@ quantize = ["onnxruntime", "onnxsim"]
 server = ["fastapi>=0.100.0", "uvicorn[standard]>=0.20.0", "pydantic>=2.0"]
 metrics = ["prometheus-client>=0.20.0"]
 bayesian = ["scipy>=1.10.0"]
+config = ["pyyaml>=6.0"]
 all = [
     "onnxsim",
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.20.0",
     "pydantic>=2.0",
     "scipy>=1.10.0",
+    "pyyaml>=6.0",
     "jinja2",
 ]
 dev = [
@@ -63,11 +65,11 @@ dev = [
 isat = "isat.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/SID-Devu/isat"
-Documentation = "https://github.com/SID-Devu/isat#readme"
-Repository = "https://github.com/SID-Devu/isat"
-Issues = "https://github.com/SID-Devu/isat/issues"
-Changelog = "https://github.com/SID-Devu/isat/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/SID-Devu/isat-tuner"
+Documentation = "https://github.com/SID-Devu/isat-tuner#readme"
+Repository = "https://github.com/SID-Devu/isat-tuner"
+Issues = "https://github.com/SID-Devu/isat-tuner/issues"
+Changelog = "https://github.com/SID-Devu/isat-tuner/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["isat*"]

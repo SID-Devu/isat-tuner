@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isat"
+version = "0.1.0"
+description = "Inference Stack Auto-Tuner — automatically find the fastest inference configuration for any ONNX model on any GPU"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Sudheer Devu", email = "sudhdevu@amd.com"},
+]
+keywords = ["onnx", "inference", "optimization", "amd", "rocm", "migraphx", "benchmarking", "auto-tuning"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: System :: Benchmark",
+]
+dependencies = [
+    "numpy",
+    "onnx",
+    "onnxruntime",
+]
+
+[project.optional-dependencies]
+rocm = ["onnxruntime-rocm"]
+quantize = ["onnxruntime", "onnxsim"]
+dev = ["pytest", "ruff"]
+all = ["onnxsim", "jinja2"]
+
+[project.scripts]
+isat = "isat.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/SID-Devu/isat"
+Repository = "https://github.com/SID-Devu/isat"
+Issues = "https://github.com/SID-Devu/isat/issues"
+
+[tool.setuptools.packages.find]
+include = ["isat*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"

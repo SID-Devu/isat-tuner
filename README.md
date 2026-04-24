@@ -7,11 +7,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/SID-Devu/isat-tuner.svg)](https://github.com/SID-Devu/isat-tuner)
 [![GitHub release](https://img.shields.io/github/v/release/SID-Devu/isat-tuner)](https://github.com/SID-Devu/isat-tuner/releases)
 
-**By Sudheer Ibrahim Daniel Devu**
-
 > **One command to find the fastest inference configuration for any ONNX model on any GPU.**
 
-ISAT is a **55-command production-grade CLI toolkit** for ONNX inference optimization. It jointly searches across memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- then benchmarks each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
+ISAT is a production-grade CLI toolkit for ONNX inference optimization. It jointly searches across memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- then benchmarks each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
 
 ```bash
 # Recommended (no venv needed, PATH handled automatically):

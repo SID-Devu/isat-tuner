@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.8] - 2026-04-24
+
+### Changed
+- **PyPI description**: Removed "55-command" count and author name from package description
+  and README intro — these belong only in the CLI banner, not in package metadata
+- Cleaner, more professional PyPI page presentation
+
 ## [0.7.7] - 2026-04-24
 
 ### Fixed

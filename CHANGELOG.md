@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.5] - 2026-04-02
+
+### Fixed
+- **CRITICAL: Removed `onnxruntime` from hard dependencies** — `pip install isat-tuner` no
+  longer pulls the generic CPU-only `onnxruntime` from PyPI, which was **destroying** custom
+  ORT builds (MIGraphX, ROCm, CUDA, TensorRT) already installed on the system
+- **Auto-detect execution provider** — CLI now probes `ort.get_available_providers()` at
+  startup and picks the best GPU EP automatically (MIGraphX > TensorRT > CUDA > ROCm > CPU)
+- **Banner shows detected provider and ORT version** so you immediately see what backend ISAT
+  will use
+- If ORT is not installed at all, the banner prints clear install instructions for each variant
+
 ## [0.7.4] - 2026-04-02
 
 ### Added

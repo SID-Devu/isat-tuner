@@ -14,9 +14,19 @@
 ISAT is a **55-command production-grade CLI toolkit** for ONNX inference optimization. It jointly searches across memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- then benchmarks each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
 
 ```bash
+# Recommended (no venv needed, PATH handled automatically):
+pipx install isat-tuner
+
+# Or with pip:
 pip install isat-tuner
+
 isat tune model.onnx --profile cloud
 ```
+
+> **Install note:** On modern Linux (Ubuntu 23.04+, Debian 12+), bare `pip install` is blocked by
+> [PEP 668](https://peps.python.org/pep-0668/). Use **`pipx install isat-tuner`** instead --
+> it creates an isolated environment and puts `isat` on your PATH automatically.
+> If you don't have pipx: `sudo apt install pipx && pipx ensurepath`.
 
 ---
 

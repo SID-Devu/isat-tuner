@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  isat-server:
+    build: .
+    command: serve --port 8000 --host 0.0.0.0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/models
+      - ./isat_output:/app/isat_output
+      - isat-db:/app/db
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    environment:
+      - HSA_XNACK=1
+      - ISAT_DB_PATH=/app/db/isat_results.db
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docs/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - isat-server
+
+volumes:
+  isat-db:

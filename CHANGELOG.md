@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.7] - 2026-04-24
+
+### Fixed
+- **download**: `isat download --list` no longer requires a positional `model_name` argument —
+  works as a standalone flag to list all available models from the hub
+- **tests**: Fixed flaky `test_canary_same_model` test that failed due to cold-start latency
+  variance causing false rollback on identical models
+- **tests**: Fixed `test_version_updated` assertion from exact match to `>=` so it doesn't
+  break on every version bump
+
+### Verified
+- **Full 55-command test pass** on AMD Strix Halo APU (gfx1151) with MIGraphX EP
+- **180/180 unit tests pass**
+
 ## [0.7.6] - 2026-04-02
 
 ### Fixed

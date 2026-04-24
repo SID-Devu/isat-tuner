@@ -4,32 +4,46 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isat-tuner"
-version = "0.7.1"
-description = "Inference Stack Auto-Tuner -- automatically find the fastest inference configuration for any ONNX model on any GPU"
-readme = "README.md"
+version = "0.7.2"
+description = "ISAT: Inference Stack Auto-Tuner — 55-command CLI to auto-tune, profile, prune, deploy, and monitor ONNX models on any GPU. By Sudheer Ibrahim Daniel Devu."
+readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [
     {name = "Sudheer Ibrahim Daniel Devu", email = "sudheerdevu4work@gmail.com"},
 ]
+maintainers = [
+    {name = "Sudheer Ibrahim Daniel Devu", email = "sudheerdevu4work@gmail.com"},
+]
 keywords = [
     "onnx", "inference", "optimization", "auto-tuning", "benchmarking",
     "gpu", "rocm", "cuda", "migraphx", "tensorrt", "openvino",
-    "performance", "latency", "throughput", "mlops",
+    "performance", "latency", "throughput", "mlops", "model-optimization",
+    "pruning", "quantization", "distillation", "profiling", "deployment",
+    "canary", "ensemble", "monitoring", "drift-detection", "llm",
+    "transformer", "edge-deployment", "codegen", "inference-serving",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "Intended Audience :: System Administrators",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: System :: Benchmark",
+    "Topic :: System :: Monitoring",
+    "Topic :: Software Development :: Testing",
     "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Typing :: Typed",
 ]
 dependencies = [
     "numpy",

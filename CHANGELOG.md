@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.3] - 2026-04-02
+
+### Added
+- **`python3 -m isat` fallback**: Package now supports `python3 -m isat` so the CLI
+  always works even when `~/.local/bin` is not on PATH
+- **Post-install banner**: Shows the ISAT banner, quick-start commands, and PATH
+  instructions automatically after `pip install isat-tuner`
+
 ## [0.7.0] - 2026-04-02
 
 ### Added

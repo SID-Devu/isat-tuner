@@ -2,14 +2,14 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/isat.svg)](https://pypi.org/project/isat/)
+[![PyPI](https://img.shields.io/pypi/v/isat-tuner.svg)](https://pypi.org/project/isat-tuner/)
 
 **One command to find the fastest inference configuration for any ONNX model on any GPU.**
 
 ISAT jointly searches across **6 dimensions** -- memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- then benchmarks each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
 
 ```bash
-pip install isat
+pip install isat-tuner
 isat tune model.onnx --profile cloud
 ```
 
@@ -38,20 +38,20 @@ A single wrong choice can leave **40%+ performance on the table**. With 6 dimens
 ## Installation
 
 ```bash
-# From PyPI
-pip install isat
+# From PyPI (works globally for anyone)
+pip install isat-tuner
 
 # From GitHub (latest)
 pip install git+https://github.com/SID-Devu/isat.git
 
 # With all optional features
-pip install "isat[all]"
+pip install "isat-tuner[all]"
 
 # Platform-specific
-pip install "isat[rocm]"      # ROCm GPU support
-pip install "isat[cuda]"      # NVIDIA CUDA support
-pip install "isat[server]"    # REST API server
-pip install "isat[bayesian]"  # Bayesian optimization (scipy)
+pip install "isat-tuner[rocm]"      # ROCm GPU support
+pip install "isat-tuner[cuda]"      # NVIDIA CUDA support
+pip install "isat-tuner[server]"    # REST API server
+pip install "isat-tuner[bayesian]"  # Bayesian optimization (scipy)
 
 # Development
 git clone https://github.com/SID-Devu/isat.git

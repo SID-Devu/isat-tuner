@@ -120,6 +120,38 @@ def main(argv: list[str] | None = None) -> int:
     # ── profiles ──────────────────────────────────────────────
     sub.add_parser("profiles", help="List available tuning profiles")
 
+    # ── optimize ──────────────────────────────────────────────
+    p_opt = sub.add_parser("optimize", help="Optimize an ONNX model (simplify, quantize, export)")
+    p_opt.add_argument("model", help="Path to .onnx model")
+    p_opt.add_argument("--simplify", action="store_true", help="Run onnxsim")
+    p_opt.add_argument("--fp16", action="store_true", help="Convert weights to FP16")
+    p_opt.add_argument("--int8", action="store_true", help="INT8 QDQ quantization")
+    p_opt.add_argument("--ort-optimize", action="store_true", help="ORT graph optimization")
+    p_opt.add_argument("--all", action="store_true", dest="all_transforms", help="Apply all transforms")
+    p_opt.add_argument("--output-dir", default="isat_optimized", help="Output directory")
+
+    # ── stress ────────────────────────────────────────────────
+    p_stress = sub.add_parser("stress", help="Run stress tests on a model")
+    p_stress.add_argument("model", help="Path to .onnx model")
+    p_stress.add_argument("--pattern", choices=["sustained", "burst", "ramp"], default="sustained")
+    p_stress.add_argument("--duration", type=float, default=60.0, help="Duration in seconds (sustained)")
+    p_stress.add_argument("--concurrency", type=int, default=4, help="Concurrent threads")
+    p_stress.add_argument("--provider", default="MIGraphXExecutionProvider")
+
+    # ── leak-check ────────────────────────────────────────────
+    p_leak = sub.add_parser("leak-check", help="Detect memory leaks during inference")
+    p_leak.add_argument("model", help="Path to .onnx model")
+    p_leak.add_argument("--iterations", type=int, default=1000, help="Number of iterations")
+    p_leak.add_argument("--provider", default="MIGraphXExecutionProvider")
+
+    # ── init ──────────────────────────────────────────────────
+    p_init = sub.add_parser("init", help="Generate a default isat.yaml config file")
+    p_init.add_argument("--output", default="isat.yaml", help="Output path")
+
+    # ── zoo ───────────────────────────────────────────────────
+    p_zoo = sub.add_parser("zoo", help="List pre-tuned model configurations")
+    p_zoo.add_argument("--search", default=None, help="Search for a specific model")
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -145,6 +177,11 @@ def main(argv: list[str] | None = None) -> int:
             "serve": _cmd_serve,
             "triton": _cmd_triton,
             "profiles": _cmd_profiles,
+            "optimize": _cmd_optimize,
+            "stress": _cmd_stress,
+            "leak-check": _cmd_leak_check,
+            "init": _cmd_init,
+            "zoo": _cmd_zoo,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -579,6 +616,165 @@ def _cmd_profiles(args) -> int:
             print(f"    constraints: {p.constraints}")
     print(f"\n{'='*70}")
     print(f"\n  Usage: isat tune model.onnx --profile <name>\n")
+    return 0
+
+
+def _cmd_optimize(args) -> int:
+    """Optimize an ONNX model."""
+    from isat.optimizer.pipeline import OptimizationPipeline
+
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+
+    pipeline = OptimizationPipeline(output_dir=args.output_dir)
+    do_all = args.all_transforms
+
+    result = pipeline.optimize(
+        args.model,
+        simplify=do_all or args.simplify,
+        convert_fp16=do_all or args.fp16,
+        quantize_int8=do_all or args.int8,
+        ort_optimize=do_all or args.ort_optimize,
+    )
+
+    print(f"\n{'='*60}")
+    print(f"  MODEL OPTIMIZATION RESULT")
+    print(f"{'='*60}")
+    print(f"  Original      : {result.original_path}")
+    print(f"  Optimized     : {result.optimized_path}")
+    print(f"  Original size : {result.original_size_mb:.1f} MB ({result.original_nodes} nodes)")
+    print(f"  Optimized size: {result.optimized_size_mb:.1f} MB ({result.optimized_nodes} nodes)")
+    print(f"  Size reduction: {result.size_reduction_pct:.1f}%")
+    print(f"  Node reduction: {result.node_reduction_pct:.1f}%")
+    print(f"  Transforms    : {', '.join(result.transforms_applied)}")
+    print(f"  Time          : {result.elapsed_s:.1f}s")
+    if result.errors:
+        print(f"  Warnings      : {'; '.join(result.errors)}")
+    print(f"{'='*60}\n")
+    return 0
+
+
+def _cmd_stress(args) -> int:
+    """Run stress tests."""
+    from isat.stress.runner import StressTest
+
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+
+    test = StressTest(args.model, provider=args.provider)
+
+    if args.pattern == "sustained":
+        result = test.sustained(duration_s=args.duration, concurrency=args.concurrency)
+    elif args.pattern == "burst":
+        result = test.burst(burst_size=args.concurrency)
+    elif args.pattern == "ramp":
+        result = test.ramp(end_concurrency=args.concurrency)
+    else:
+        result = test.sustained(duration_s=args.duration, concurrency=args.concurrency)
+
+    print(f"\n{'='*60}")
+    print(f"  STRESS TEST RESULTS ({result.pattern})")
+    print(f"{'='*60}")
+    print(f"  Total requests    : {result.total_requests}")
+    print(f"  Successful        : {result.successful_requests}")
+    print(f"  Failed            : {result.failed_requests}")
+    print(f"  Success rate      : {result.success_rate:.1f}%")
+    print(f"  Duration          : {result.total_duration_s:.1f}s")
+    print(f"  Throughput        : {result.rps:.1f} req/s")
+    print(f"  Peak concurrency  : {result.peak_concurrent}")
+    if result.latency_stats:
+        s = result.latency_stats
+        print(f"  Mean latency      : {s.mean_ms:.2f} ms")
+        print(f"  P95 latency       : {s.p95_ms:.2f} ms")
+        print(f"  P99 latency       : {s.p99_ms:.2f} ms")
+    if result.timeline:
+        print(f"\n  Timeline:")
+        for t in result.timeline:
+            print(f"    {t}")
+    if result.errors:
+        print(f"\n  Errors ({len(result.errors)}):")
+        for e in result.errors[:5]:
+            print(f"    {e}")
+    print(f"{'='*60}\n")
+    return 0
+
+
+def _cmd_leak_check(args) -> int:
+    """Run memory leak detection."""
+    from isat.stress.leak_detector import MemoryLeakDetector
+
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+
+    detector = MemoryLeakDetector(
+        args.model, provider=args.provider, iterations=args.iterations,
+    )
+    report = detector.run()
+
+    print(f"\n{'='*60}")
+    print(f"  MEMORY LEAK DETECTION")
+    print(f"{'='*60}")
+    print(f"  Iterations        : {report.iterations}")
+    print(f"  Duration          : {report.duration_s:.1f}s")
+    print(f"  Host RSS delta    : {report.host_rss_delta_mb:+.1f} MB")
+    print(f"  GPU VRAM delta    : {report.gpu_vram_delta_mb:+.1f} MB")
+    print(f"  GPU GTT delta     : {report.gpu_gtt_delta_mb:+.1f} MB")
+    print(f"  Leak rate         : {report.leak_rate_mb_per_1k:.2f} MB / 1K iterations")
+    print(f"  Verdict           : {report.verdict}")
+    print(f"{'='*60}\n")
+    return 1 if report.leak_detected else 0
+
+
+def _cmd_init(args) -> int:
+    """Generate default config file."""
+    from isat.config.loader import generate_default_config
+    path = generate_default_config(args.output)
+    print(f"Generated default config: {path}")
+    print(f"Edit it, then run: isat tune --config {path}")
+    return 0
+
+
+def _cmd_zoo(args) -> int:
+    """List pre-tuned model configurations."""
+    from isat.model_zoo import list_supported, lookup
+
+    if args.search:
+        entry = lookup(args.search)
+        if entry:
+            print(f"\n{'='*60}")
+            print(f"  PRE-TUNED CONFIG: {args.search}")
+            print(f"{'='*60}")
+            print(f"  Pattern     : {entry.model_pattern}")
+            print(f"  Class       : {entry.model_class}")
+            print(f"  Description : {entry.description}")
+            print(f"  Precision   : {entry.recommended_precision}")
+            print(f"  Provider    : {entry.recommended_provider}")
+            print(f"  Target HW   : {entry.hardware_target}")
+            if entry.estimated_latency_ms:
+                print(f"  Est. latency: {entry.estimated_latency_ms:.0f} ms")
+            print(f"\n  Recommended environment:")
+            for k, v in entry.recommended_env.items():
+                print(f"    export {k}={v}")
+            if entry.notes:
+                print(f"\n  Notes: {entry.notes}")
+            print(f"{'='*60}\n")
+        else:
+            print(f"No pre-tuned config found for '{args.search}'")
+        return 0
+
+    models = list_supported()
+    print(f"\n{'='*70}")
+    print(f"  ISAT MODEL ZOO -- Pre-tuned Configurations")
+    print(f"{'='*70}")
+    print(f"\n  {'Pattern':<25} {'Class':<15} {'Precision':<10} {'Description'}")
+    print(f"  {'-'*25} {'-'*15} {'-'*10} {'-'*30}")
+    for m in models:
+        print(f"  {m['pattern']:<25} {m['class']:<15} {m['precision']:<10} {m['description']}")
+    print(f"\n  Usage: isat zoo --search <model_name>")
+    print(f"{'='*70}\n")
     return 0
 
 

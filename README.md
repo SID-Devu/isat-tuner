@@ -42,7 +42,7 @@ A single wrong choice can leave **40%+ performance on the table**. With 6 dimens
 pip install isat-tuner
 
 # From GitHub (latest)
-pip install git+https://github.com/SID-Devu/isat.git
+pip install git+https://github.com/SID-Devu/isat-tuner.git
 
 # With all optional features
 pip install "isat-tuner[all]"
@@ -54,7 +54,7 @@ pip install "isat-tuner[server]"    # REST API server
 pip install "isat-tuner[bayesian]"  # Bayesian optimization (scipy)
 
 # Development
-git clone https://github.com/SID-Devu/isat.git
+git clone https://github.com/SID-Devu/isat-tuner.git
 cd isat && pip install -e ".[dev,all]"
 ```
 

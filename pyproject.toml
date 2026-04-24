@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [
-    {name = "Sudheer Devu", email = "sudheerdevu4work@gmail.com"},
+    {name = "Sudheer Ibrahim Daniel Devu", email = "sudheerdevu4work@gmail.com"},
 ]
 keywords = [
     "onnx", "inference", "optimization", "auto-tuning", "benchmarking",

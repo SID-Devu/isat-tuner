@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isat-tuner"
-version = "0.3.0"
+version = "0.4.0"
 description = "Inference Stack Auto-Tuner -- automatically find the fastest inference configuration for any ONNX model on any GPU"
 readme = "README.md"
 license = {text = "Apache-2.0"}

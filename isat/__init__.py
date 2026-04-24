@@ -5,4 +5,4 @@ on any GPU by jointly searching memory strategy, kernel backend, precision,
 graph transformations, and system tuning.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

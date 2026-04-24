@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isat-tuner"
-version = "0.1.0"
+version = "0.1.1"
 description = "Inference Stack Auto-Tuner -- automatically find the fastest inference configuration for any ONNX model on any GPU"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [
-    {name = "Sudheer Devu", email = "sudhdevu@amd.com"},
+    {name = "Sudheer Devu", email = "sudheerdevu4work@gmail.com"},
 ]
 keywords = [
     "onnx", "inference", "optimization", "auto-tuning", "benchmarking",

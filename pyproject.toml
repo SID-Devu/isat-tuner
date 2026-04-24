@@ -5,14 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "isat"
 version = "0.1.0"
-description = "Inference Stack Auto-Tuner — automatically find the fastest inference configuration for any ONNX model on any GPU"
+description = "Inference Stack Auto-Tuner -- automatically find the fastest inference configuration for any ONNX model on any GPU"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [
     {name = "Sudheer Devu", email = "sudhdevu@amd.com"},
 ]
-keywords = ["onnx", "inference", "optimization", "amd", "rocm", "migraphx", "benchmarking", "auto-tuning"]
+keywords = [
+    "onnx", "inference", "optimization", "auto-tuning", "benchmarking",
+    "gpu", "rocm", "cuda", "migraphx", "tensorrt", "openvino",
+    "performance", "latency", "throughput", "mlops",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -25,6 +29,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: System :: Benchmark",
+    "Operating System :: POSIX :: Linux",
 ]
 dependencies = [
     "numpy",
@@ -34,17 +39,35 @@ dependencies = [
 
 [project.optional-dependencies]
 rocm = ["onnxruntime-rocm"]
+cuda = ["onnxruntime-gpu"]
 quantize = ["onnxruntime", "onnxsim"]
-dev = ["pytest", "ruff"]
-all = ["onnxsim", "jinja2"]
+server = ["fastapi>=0.100.0", "uvicorn[standard]>=0.20.0", "pydantic>=2.0"]
+metrics = ["prometheus-client>=0.20.0"]
+bayesian = ["scipy>=1.10.0"]
+all = [
+    "onnxsim",
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "pydantic>=2.0",
+    "scipy>=1.10.0",
+    "jinja2",
+]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "pre-commit",
+]
 
 [project.scripts]
 isat = "isat.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/SID-Devu/isat"
+Documentation = "https://github.com/SID-Devu/isat#readme"
 Repository = "https://github.com/SID-Devu/isat"
 Issues = "https://github.com/SID-Devu/isat/issues"
+Changelog = "https://github.com/SID-Devu/isat/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 include = ["isat*"]
@@ -52,3 +75,16 @@ include = ["isat*"]
 [tool.ruff]
 line-length = 120
 target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true

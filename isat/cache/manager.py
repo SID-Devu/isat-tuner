@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.cache")
 
 DEFAULT_CACHE_DIRS = [
@@ -149,7 +151,7 @@ class CacheManager:
         start = time.time()
         session = ort.InferenceSession(
             model_path,
-            providers=[provider, "CPUExecutionProvider"],
+            providers=ort_providers(provider),
         )
         feed = {}
         for inp in session.get_inputs():

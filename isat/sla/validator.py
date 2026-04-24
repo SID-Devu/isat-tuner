@@ -53,6 +53,15 @@ class SLAResult:
             f"  {'-'*30} {'-'*12} {'-'*12} {'-'*10} {'-'*8}",
         ]
         for c in self.checks:
+            if "skipped" in c.message.lower():
+                lines.append(
+                    f"  {c.requirement.name:<30} "
+                    f"{c.requirement.operator}{c.requirement.threshold:>.1f}{c.requirement.unit:>4} "
+                    f"{'N/A':>12} "
+                    f"{'---':>10} "
+                    f"{'SKIP':>8}"
+                )
+                continue
             status = "PASS" if c.passed else ("FAIL" if c.requirement.critical else "WARN")
             margin_str = f"{c.margin:+.1f}%" if c.margin != 0 else "exact"
             lines.append(

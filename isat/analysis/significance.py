@@ -62,13 +62,22 @@ def compare_configs(
 
     se = math.sqrt(var_a / n_a + var_b / n_b) if (n_a > 0 and n_b > 0) else 1e-10
 
-    t_stat = (mean_a - mean_b) / max(se, 1e-10)
+    if se < 1e-12:
+        t_stat = 0.0
+        df = max(n_a + n_b - 2, 1.0)
+        p_value = 1.0
+    else:
+        t_stat = (mean_a - mean_b) / se
 
-    num = (var_a / n_a + var_b / n_b) ** 2
-    denom = (var_a / n_a) ** 2 / max(n_a - 1, 1) + (var_b / n_b) ** 2 / max(n_b - 1, 1)
-    df = num / max(denom, 1e-10)
+        num = (var_a / n_a + var_b / n_b) ** 2
+        term_a = (var_a / n_a) ** 2 / max(n_a - 1, 1) if var_a > 1e-15 else 0.0
+        term_b = (var_b / n_b) ** 2 / max(n_b - 1, 1) if var_b > 1e-15 else 0.0
+        denom = term_a + term_b
+        df = max(1.0, num / denom if denom > 1e-15 else float(n_a + n_b - 2))
 
-    p_value = _two_tail_p(t_stat, df)
+        p_value = _two_tail_p(t_stat, df)
+        if math.isnan(p_value) or math.isinf(p_value):
+            p_value = 1.0
 
     alpha = 1 - confidence
     t_crit = _t_critical(df, alpha)

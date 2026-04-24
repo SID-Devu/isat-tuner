@@ -24,7 +24,12 @@ class GPUAgent:
 
 
 def parse_rocminfo() -> Optional[GPUAgent]:
-    """Parse rocminfo output and return the first GPU agent."""
+    """Parse rocminfo output and return the first GPU agent.
+
+    rocminfo outputs agent blocks where Name/Marketing Name appear BEFORE
+    the Device Type line, so we collect each agent block first, then check
+    whether it's a GPU agent.
+    """
     try:
         r = subprocess.run(["rocminfo"], capture_output=True, text=True, timeout=15)
         if r.returncode != 0:
@@ -32,63 +37,70 @@ def parse_rocminfo() -> Optional[GPUAgent]:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return None
 
-    agent = GPUAgent()
-    in_gpu = False
-
+    blocks: list[list[str]] = []
+    current: list[str] = []
     for line in r.stdout.splitlines():
-        line = line.strip()
+        stripped = line.strip()
+        if re.match(r"^Agent \d+", stripped):
+            if current:
+                blocks.append(current)
+            current = []
+        elif stripped:
+            current.append(stripped)
+    if current:
+        blocks.append(current)
 
-        if "Agent Type:" in line and "GPU" in line:
-            in_gpu = True
-        elif "Agent Type:" in line and "GPU" not in line:
-            if in_gpu:
+    for block in blocks:
+        device_type = ""
+        for ln in block:
+            if ln.startswith("Device Type:"):
+                device_type = ln.split(":", 1)[1].strip()
                 break
-            in_gpu = False
-
-        if not in_gpu:
+        if "GPU" not in device_type:
             continue
 
-        if "Name:" in line and not agent.name:
-            agent.name = line.split(":", 1)[1].strip()
-        elif "Gfx Target" in line:
-            m = re.search(r"gfx\w+", line)
+        agent = GPUAgent()
+        for ln in block:
+            if ln.startswith("Name:") and not agent.name:
+                val = ln.split(":", 1)[1].strip()
+                if "ISA" not in ln and "amdgcn" not in val:
+                    agent.name = val
+            elif ln.startswith("Marketing Name"):
+                mname = ln.split(":", 1)[1].strip()
+                if mname and mname not in ("N/A", ""):
+                    agent.product = mname
+            elif ln.startswith("Vendor Name"):
+                agent.vendor = ln.split(":", 1)[1].strip()
+            elif "Compute Unit:" in ln:
+                m = re.search(r"(\d+)", ln.split(":", 1)[1])
+                if m:
+                    agent.cu_count = int(m.group(1))
+            elif "SIMDs per CU" in ln:
+                m = re.search(r"(\d+)", ln.split(":", 1)[1])
+                if m:
+                    agent.simd_count = int(m.group(1)) * max(agent.cu_count, 1)
+            elif "Max Clock Freq" in ln:
+                m = re.search(r"(\d+)", ln.split(":", 1)[1])
+                if m:
+                    agent.max_clock_mhz = int(m.group(1))
+            elif "Wavefront Size" in ln:
+                m = re.search(r"(\d+)", ln.split(":", 1)[1])
+                if m:
+                    agent.wavefront_size = int(m.group(1))
+            elif "Product Name" in ln:
+                pname = ln.split(":", 1)[1].strip()
+                if pname and pname != "N/A":
+                    agent.product = pname
+
+        if not agent.gfx_target:
+            m = re.search(r"gfx\w+", agent.name)
             if m:
                 agent.gfx_target = m.group(0)
-        elif "Compute Unit:" in line:
-            m = re.search(r"(\d+)", line.split(":", 1)[1])
-            if m:
-                agent.cu_count = int(m.group(1))
-        elif "SIMDs per CU" in line:
-            m = re.search(r"(\d+)", line.split(":", 1)[1])
-            if m:
-                agent.simd_count = int(m.group(1)) * agent.cu_count
-        elif "Max Clock Freq" in line:
-            m = re.search(r"(\d+)", line.split(":", 1)[1])
-            if m:
-                agent.max_clock_mhz = int(m.group(1))
-        elif "Wavefront Size" in line:
-            m = re.search(r"(\d+)", line.split(":", 1)[1])
-            if m:
-                agent.wavefront_size = int(m.group(1))
-        elif "LDS" in line and "Size" in line:
-            m = re.search(r"(\d+)", line.split(":", 1)[1])
-            if m:
-                agent.lds_size_kb = int(m.group(1))
-        elif "Product Name" in line:
-            agent.product = line.split(":", 1)[1].strip()
-        elif "Marketing Name" in line:
-            mname = line.split(":", 1)[1].strip()
-            if mname and mname != "N/A" and not agent.product:
-                agent.product = mname
-        elif "Vendor Name" in line:
-            agent.vendor = line.split(":", 1)[1].strip()
 
-    if agent.name and not agent.gfx_target:
-        m = re.search(r"gfx\w+", agent.name)
-        if m:
-            agent.gfx_target = m.group(0)
+        if agent.gfx_target or agent.name:
+            return agent
 
-    return agent if (agent.gfx_target or agent.name) else None
+    return None
 
 
 def xnack_supported() -> bool:
@@ -100,6 +112,22 @@ def xnack_supported() -> bool:
         "gfx1151", "gfx1150", "gfx1100", "gfx1101", "gfx1102",
         "gfx90a", "gfx940", "gfx941", "gfx942",
     }
+
+
+def xnack_enabled() -> bool:
+    """Check if XNACK is currently enabled (HSA_XNACK=1 or system default)."""
+    import os
+    env_val = os.environ.get("HSA_XNACK", "")
+    if env_val == "1":
+        return True
+    try:
+        r = subprocess.run(["rocminfo"], capture_output=True, text=True, timeout=15)
+        for line in r.stdout.splitlines():
+            if "XNACK enabled" in line:
+                return "YES" in line.upper()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return False
 
 
 def rocm_smi_query(flag: str) -> Optional[str]:

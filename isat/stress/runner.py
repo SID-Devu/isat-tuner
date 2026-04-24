@@ -21,6 +21,7 @@ from typing import Any, Optional
 import numpy as np
 
 from isat.benchmark.stats import LatencyStats, compute_stats
+from isat.utils import ort_providers
 
 log = logging.getLogger("isat.stress")
 
@@ -262,7 +263,7 @@ class StressTest:
             import onnxruntime as ort
             session = ort.InferenceSession(
                 self.model_path,
-                providers=[self.provider, "CPUExecutionProvider"],
+                providers=ort_providers(self.provider),
             )
             feed = {}
             for inp in session.get_inputs():

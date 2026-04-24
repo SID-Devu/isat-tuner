@@ -20,6 +20,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.llm_bench")
 
 
@@ -88,7 +90,7 @@ class LLMBenchmarker:
         import onnxruntime as ort
 
         session = ort.InferenceSession(
-            self.model_path, providers=[self.provider, "CPUExecutionProvider"],
+            self.model_path, providers=ort_providers(self.provider),
         )
         inputs = session.get_inputs()
         outputs = session.get_outputs()

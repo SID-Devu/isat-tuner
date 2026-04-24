@@ -23,6 +23,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.profiler")
 
 
@@ -101,7 +103,7 @@ class LatencyProfiler:
         session = ort.InferenceSession(
             self.model_path,
             sess_options=opts,
-            providers=[self.provider, "CPUExecutionProvider"],
+            providers=ort_providers(self.provider),
         )
         t3 = time.perf_counter()
         compilation_ms = (t3 - t2) * 1000

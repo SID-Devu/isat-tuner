@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.warmup")
 
 
@@ -66,7 +68,7 @@ class WarmupAnalyzer:
 
         session = ort.InferenceSession(
             self.model_path,
-            providers=[self.provider, "CPUExecutionProvider"],
+            providers=ort_providers(self.provider),
         )
 
         feed = {}

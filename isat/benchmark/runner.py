@@ -15,6 +15,7 @@ from isat.benchmark.thermal import ThermalGuard
 from isat.fingerprint.hardware import HardwareFingerprint
 from isat.fingerprint.model import ModelFingerprint
 from isat.search.engine import CandidateConfig, TuneResult
+from isat.utils import ort_providers
 
 log = logging.getLogger("isat.benchmark")
 
@@ -85,6 +86,7 @@ class BenchmarkRunner:
                 self.thermal.sample()
                 log.info("    run %d/%d: %.2f ms", i + 1, self.runs, lat_ms)
 
+            result.latencies = latencies
             stats = compute_stats(latencies)
             result.mean_latency_ms = stats.mean_ms
             result.p50_latency_ms = stats.p50_ms
@@ -153,7 +155,7 @@ class BenchmarkRunner:
             return None, {}
 
         try:
-            providers = [self.provider, "CPUExecutionProvider"]
+            providers = ort_providers(self.provider)
             sess_opts = ort.SessionOptions()
             sess_opts.graph_optimization_level = ort.GraphOptimizationLevel(config.graph.ort_opt_level)
 

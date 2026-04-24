@@ -12,6 +12,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Optional
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.thermal")
 
 
@@ -90,7 +92,7 @@ class ThermalMonitor:
 
         session = ort.InferenceSession(
             self.model_path,
-            providers=[self.provider, "CPUExecutionProvider"],
+            providers=ort_providers(self.provider),
         )
         feed = self._build_feed(session)
 

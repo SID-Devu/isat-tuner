@@ -17,6 +17,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.scheduler")
 
 
@@ -86,7 +88,7 @@ class BatchScheduler:
             try:
                 session = ort.InferenceSession(
                     self.model_path,
-                    providers=[self.provider, "CPUExecutionProvider"],
+                    providers=ort_providers(self.provider),
                 )
                 feed = self._build_feed(session, bs)
 

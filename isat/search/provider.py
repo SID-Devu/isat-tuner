@@ -105,6 +105,11 @@ class ProviderSearchDimension:
 
     def get_provider_list(self, config: ProviderConfig) -> list[tuple[str, dict] | str]:
         """Return the ORT providers list for session creation."""
+        prov = config.provider_name
         if config.provider_options:
-            return [(config.provider_name, config.provider_options), "CPUExecutionProvider"]
-        return [config.provider_name, "CPUExecutionProvider"]
+            result: list[tuple[str, dict] | str] = [(prov, config.provider_options)]
+        else:
+            result = [prov]
+        if prov != "CPUExecutionProvider":
+            result.append("CPUExecutionProvider")
+        return result

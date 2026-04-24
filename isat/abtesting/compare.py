@@ -20,6 +20,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.abtesting")
 
 
@@ -100,7 +102,7 @@ class ABTest:
             os.environ[k] = v
 
         sess_a = ort.InferenceSession(
-            self.model_a, providers=[self.provider, "CPUExecutionProvider"],
+            self.model_a, providers=ort_providers(self.provider),
         )
         feed_a = self._build_feed(sess_a)
 
@@ -110,7 +112,7 @@ class ABTest:
             os.environ[k] = v
 
         sess_b = ort.InferenceSession(
-            self.model_b, providers=[self.provider, "CPUExecutionProvider"],
+            self.model_b, providers=ort_providers(self.provider),
         )
         feed_b = self._build_feed(sess_b)
 
@@ -199,8 +201,11 @@ class ABTest:
 
 def _welch_t_test(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
     n_a, n_b = len(a), len(b)
-    mean_a, mean_b = np.mean(a), np.mean(b)
-    var_a, var_b = np.var(a, ddof=1), np.var(b, ddof=1)
+    if n_a < 2 or n_b < 2:
+        return 0.0, 1.0
+
+    mean_a, mean_b = float(np.mean(a)), float(np.mean(b))
+    var_a, var_b = float(np.var(a, ddof=1)), float(np.var(b, ddof=1))
 
     se = np.sqrt(var_a / n_a + var_b / n_b)
     if se < 1e-12:
@@ -209,26 +214,47 @@ def _welch_t_test(a: np.ndarray, b: np.ndarray) -> tuple[float, float]:
     t = (mean_a - mean_b) / se
 
     df_num = (var_a / n_a + var_b / n_b) ** 2
-    df_den = (var_a / n_a) ** 2 / (n_a - 1) + (var_b / n_b) ** 2 / (n_b - 1)
-    df = df_num / df_den if df_den > 0 else 1
+    term_a = (var_a / n_a) ** 2 / (n_a - 1) if var_a > 1e-15 else 0
+    term_b = (var_b / n_b) ** 2 / (n_b - 1) if var_b > 1e-15 else 0
+    df_den = term_a + term_b
+    df = max(1.0, df_num / df_den if df_den > 1e-15 else 1.0)
 
     try:
-        from scipy import stats
-        p = 2 * stats.t.sf(abs(t), df)
+        from scipy import stats as sp_stats
+        p = float(2 * sp_stats.t.sf(abs(t), df))
     except ImportError:
-        import math
-        x = df / (df + t * t)
         p = _approx_p(abs(t), df)
 
-    return float(t), float(p)
+    if np.isnan(p) or np.isinf(p):
+        p = 1.0
+    return float(t), p
 
 
-def _approx_p(t: float, df: float) -> float:
-    """Approximate two-tailed p-value without scipy."""
+def _approx_p(t_val: float, df: float) -> float:
+    """Approximate two-tailed p-value using incomplete beta function approximation."""
     import math
-    x = t / math.sqrt(t * t + df) if (t * t + df) > 0 else 0
-    p = 1.0 - 0.5 * (1.0 + x * (1.0 + (-0.356563782 + (1.781477937 + (-1.821255978 + 1.330274429 * abs(x)) * abs(x)) * abs(x)) * abs(x)))
-    return max(0.001, min(1.0, 2.0 * (1.0 - abs(1.0 - p))))
+    if df <= 0 or t_val < 0:
+        return 1.0
+    x = df / (df + t_val * t_val)
+    if x >= 1.0:
+        return 1.0
+    if x <= 0.0:
+        return 0.0
+    a, b = df / 2.0, 0.5
+    try:
+        log_beta = math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
+        front = math.exp(a * math.log(x) + b * math.log(1 - x) - log_beta) / a
+        result = front
+        for n in range(1, 200):
+            front *= (n - b) * x / (a + n) if n <= 1 else (n - b) * x / (a + n)
+            result += front
+            if abs(front) < 1e-10:
+                break
+        return max(0.001, min(1.0, result))
+    except (ValueError, OverflowError, ZeroDivisionError):
+        z = abs(t_val) / math.sqrt(df) if df > 0 else 0
+        p = math.exp(-0.5 * z * z) * 0.5
+        return max(0.001, min(1.0, 2 * p))
 
 
 def _bootstrap_ci(a: np.ndarray, b: np.ndarray, n_boot: int = 1000, alpha: float = 0.05) -> tuple[float, float]:

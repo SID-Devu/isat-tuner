@@ -15,6 +15,7 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
 from isat.utils.sysfs import gpu_gtt_used_mb, gpu_vram_used_mb
 
 log = logging.getLogger("isat.stress.leak")
@@ -49,28 +50,26 @@ class MemoryLeakDetector:
         iterations: int = 1000,
         sample_interval: int = 50,
         leak_threshold_mb: float = 50.0,
+        warmup: int = 10,
     ):
         self.model_path = model_path
         self.provider = provider
         self.iterations = iterations
-        self.sample_interval = sample_interval
         self.leak_threshold_mb = leak_threshold_mb
+        self.warmup = warmup
+
+        if sample_interval >= iterations:
+            self.sample_interval = max(1, iterations // 5)
+        else:
+            self.sample_interval = sample_interval
 
     def run(self) -> LeakReport:
         """Run the leak detection test."""
-        log.info("Memory leak detection: %d iterations, sampling every %d",
-                 self.iterations, self.sample_interval)
-
         import onnxruntime as ort
-
-        gc.collect()
-        host_start = _get_rss_mb()
-        vram_start = gpu_vram_used_mb() or 0
-        gtt_start = gpu_gtt_used_mb() or 0
 
         session = ort.InferenceSession(
             self.model_path,
-            providers=[self.provider, "CPUExecutionProvider"],
+            providers=ort_providers(self.provider),
         )
 
         feed = {}
@@ -80,6 +79,19 @@ class MemoryLeakDetector:
                 feed[inp.name] = np.ones(shape, dtype=np.int64)
             else:
                 feed[inp.name] = np.random.randn(*shape).astype(np.float32)
+
+        log.info("Warming up %d iterations (JIT compile, graph optimization)...", self.warmup)
+        for _ in range(self.warmup):
+            session.run(None, feed)
+        gc.collect()
+        time.sleep(0.5)
+
+        log.info("Memory leak detection: %d iterations, sampling every %d",
+                 self.iterations, self.sample_interval)
+
+        host_start = _get_rss_mb()
+        vram_start = gpu_vram_used_mb() or 0
+        gtt_start = gpu_gtt_used_mb() or 0
 
         samples: list[dict] = []
         start = time.time()
@@ -107,13 +119,22 @@ class MemoryLeakDetector:
         gtt_delta = gtt_end - gtt_start
         total_delta = host_delta + vram_delta + gtt_delta
 
-        leak_detected = total_delta > self.leak_threshold_mb
+        leak_detected = False
+        if len(samples) >= 3:
+            mem_trend = [s["host_rss_mb"] + s.get("gpu_vram_mb", 0) + s.get("gpu_gtt_mb", 0) for s in samples]
+            first_third = np.mean(mem_trend[:len(mem_trend) // 3])
+            last_third = np.mean(mem_trend[-len(mem_trend) // 3:])
+            steady_growth = last_third - first_third
+            leak_detected = steady_growth > self.leak_threshold_mb
+        else:
+            leak_detected = total_delta > self.leak_threshold_mb
+
         leak_rate = total_delta / (self.iterations / 1000) if self.iterations > 0 else 0
 
         if leak_detected:
-            verdict = f"LEAK DETECTED: {total_delta:.1f} MB growth over {self.iterations} iterations"
+            verdict = f"LEAK DETECTED: {total_delta:.1f} MB growth over {self.iterations} post-warmup iterations"
         elif total_delta > self.leak_threshold_mb * 0.5:
-            verdict = f"WARNING: {total_delta:.1f} MB growth (borderline)"
+            verdict = f"WARNING: {total_delta:.1f} MB growth (borderline, may be caching)"
         else:
             verdict = f"OK: {total_delta:.1f} MB growth (within threshold)"
 

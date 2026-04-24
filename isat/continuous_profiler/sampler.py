@@ -18,6 +18,8 @@ from typing import Optional
 
 import numpy as np
 
+from isat.utils import ort_providers
+
 log = logging.getLogger("isat.continuous_profiler")
 
 
@@ -110,7 +112,7 @@ class ContinuousProfiler:
         from isat.utils.sysfs import gpu_temp_edge, gpu_vram_used_mb
 
         session = ort.InferenceSession(
-            self.model_path, providers=[self.provider, "CPUExecutionProvider"],
+            self.model_path, providers=ort_providers(self.provider),
         )
         feed = self._build_feed(session)
         for _ in range(5):

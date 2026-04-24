@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.5.0] - 2026-04-24
+
+### Fixed
+- **Version string**: BANNER and `--version` now dynamically read `__version__` instead of hardcoded `0.1.0`
+- **SLA validator**: Unprovided metrics are now skipped (shown as PASS) instead of failing with `actual=0.00`
+- **GPU detection**: `hwinfo` now parses Marketing Name and fallback gfx target from GPU agent name
+- **Profile command**: Added `--warmup` flag (default 3) with actual warmup iterations before steady-state timing
+
+### Added
+- **Performance regression detector** (`isat regression`): Track latency across model versions against baselines
+  with Welch's t-test, threshold %, history tracking, and `--set-baseline` for CI pipelines
+- **ONNX security/compliance scanner** (`isat scan`): Check model file size, external data integrity,
+  opset compliance, unsafe/deprecated operators, NaN/Inf in initializers, metadata, graph pattern analysis.
+  Outputs a 0-100 compliance score
+- **Operator compatibility matrix** (`isat compat-matrix`): Shows per-provider op support (CPU, MIGraphX,
+  CUDA, TensorRT, OpenVINO, QNN) with FP16/INT8 capability flags
+- **Thermal throttle detector** (`isat thermal`): Monitors GPU temp + clock during inference, detects
+  throttling events, estimates performance impact percentage
+- **Quantization sensitivity analyzer** (`isat quant-sensitivity`): Per-layer MSE analysis for FP16/INT8,
+  identifies sensitive layers, generates mixed-precision recipe
+- **Multi-model pipeline optimizer** (`isat pipeline`): Profile chains of ONNX models, find bottleneck stage,
+  compute per-stage % of total latency, generate optimization suggestions
+- **Hardware recommendation engine** (`isat recommend`): Given model characteristics, rank 8 GPU targets
+  (AMD APU, MI250X, MI300X, NVIDIA T4/A10G/A100/H100, Intel CPU) by estimated latency, cost, and memory fit.
+  Supports `--max-latency`, `--max-cost`, `--prefer-amd` filters
+- **Model version registry** (`isat registry`): SQLite-backed model version tracking with register, list,
+  promote (dev->staging->production), diff versions, and SHA256 verification
+- CLI expanded to **38 subcommands** (8 new: scan, regression, compat-matrix, thermal, quant-sensitivity,
+  pipeline, recommend, registry)
+
+## [0.4.0] - 2026-04-02
+
+### Added
+- Dynamic shape handler (`isat shapes`): benchmark across input shapes/sequence lengths
+- Model hub integration (`isat download`): download from ONNX Model Zoo / HuggingFace with caching
+- Power efficiency profiler (`isat power`): measure perf/watt, energy per inference
+- Memory planner (`isat memory`): estimate peak memory, predict OOM, recommend batch sizes
+- A/B testing framework (`isat abtest`): statistically rigorous comparison of two models
+- Graph visualizer (`isat visualize`): DOT, ASCII, and histogram representations
+- Environment snapshot (`isat snapshot`): capture full system state for reproducibility
+- Adaptive batch scheduler (`isat batch`): find optimal batch size across latency/throughput tradeoff
+- CLI expanded to 30 subcommands
+
 ## [0.3.0] - 2026-04-02
 
 ### Added

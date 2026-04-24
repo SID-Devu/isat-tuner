@@ -21,16 +21,19 @@ import sys
 import time
 from pathlib import Path
 
+from isat import __version__
 
-BANNER = r"""
+BANNER = (
+    r"""
   _____ ____    _  _____
  |_   _/ ___|  / \|_   _|
    | | \___ \ / _ \ | |
    | |  ___) / ___ \| |
    |_| |____/_/   \_\_|
 
-  Inference Stack Auto-Tuner v0.1.0
 """
+    + f"  Inference Stack Auto-Tuner v{__version__}\n"
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
         epilog="Run 'isat <command> --help' for detailed options.",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
-    parser.add_argument("--version", action="version", version="isat 0.1.0")
+    parser.add_argument("--version", action="version", version=f"isat {__version__}")
     sub = parser.add_subparsers(dest="command")
 
     # ── tune ──────────────────────────────────────────────────
@@ -160,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     p_prof = sub.add_parser("profile", help="Decompose latency into phases (load/compile/inference)")
     p_prof.add_argument("model", help="Path to .onnx model")
     p_prof.add_argument("--runs", type=int, default=50, help="Steady-state runs")
+    p_prof.add_argument("--warmup", type=int, default=3, help="Warmup iterations before profiling")
     p_prof.add_argument("--provider", default="MIGraphXExecutionProvider")
 
     # ── diff ─────────────────────────────────────────────────
@@ -251,6 +255,58 @@ def main(argv: list[str] | None = None) -> int:
     p_batch.add_argument("--provider", default="CPUExecutionProvider")
     p_batch.add_argument("--sizes", default="1,2,4,8,16,32", help="Comma-separated batch sizes")
 
+    # ── scan ───────────────────────────────────────────────
+    p_scan = sub.add_parser("scan", help="Security and compliance scan of ONNX model")
+    p_scan.add_argument("model", help="Path to .onnx model")
+
+    # ── regression ─────────────────────────────────────────
+    p_reg = sub.add_parser("regression", help="Performance regression detection")
+    p_reg.add_argument("model", help="Path to .onnx model")
+    p_reg.add_argument("--threshold", type=float, default=5.0, help="Regression threshold %%")
+    p_reg.add_argument("--runs", type=int, default=20, help="Benchmark runs")
+    p_reg.add_argument("--provider", default="CPUExecutionProvider")
+    p_reg.add_argument("--history", action="store_true", help="Show regression history")
+    p_reg.add_argument("--set-baseline", action="store_true", help="Force save as baseline")
+    p_reg.add_argument("--db", default="isat_results.db")
+
+    # ── compat-matrix ──────────────────────────────────────
+    p_cm = sub.add_parser("compat-matrix", help="Operator compatibility across providers")
+    p_cm.add_argument("model", help="Path to .onnx model")
+
+    # ── thermal ────────────────────────────────────────────
+    p_therm = sub.add_parser("thermal", help="Thermal throttle detection during inference")
+    p_therm.add_argument("model", help="Path to .onnx model")
+    p_therm.add_argument("--provider", default="CPUExecutionProvider")
+    p_therm.add_argument("--runs", type=int, default=100)
+
+    # ── quant-sensitivity ──────────────────────────────────
+    p_qs = sub.add_parser("quant-sensitivity", help="Per-layer quantization sensitivity analysis")
+    p_qs.add_argument("model", help="Path to .onnx model")
+
+    # ── pipeline ───────────────────────────────────────────
+    p_pipe = sub.add_parser("pipeline", help="Profile multi-model inference pipeline")
+    p_pipe.add_argument("models", nargs="+", help="model_name:path pairs (e.g. encoder:enc.onnx decoder:dec.onnx)")
+    p_pipe.add_argument("--provider", default="CPUExecutionProvider")
+    p_pipe.add_argument("--runs", type=int, default=20)
+
+    # ── recommend ──────────────────────────────────────────
+    p_rec = sub.add_parser("recommend", help="Hardware recommendation for a model")
+    p_rec.add_argument("model", help="Path to .onnx model")
+    p_rec.add_argument("--max-latency", type=float, default=0, help="Max acceptable latency ms")
+    p_rec.add_argument("--max-cost", type=float, default=0, help="Max $/hr budget")
+    p_rec.add_argument("--prefer-amd", action="store_true")
+
+    # ── registry ───────────────────────────────────────────
+    p_rgy = sub.add_parser("registry", help="Model version registry")
+    p_rgy.add_argument("action", choices=["register", "list", "promote", "diff", "show"],
+                       help="Registry action")
+    p_rgy.add_argument("--model-name", default="", help="Model name")
+    p_rgy.add_argument("--version", default="", help="Model version")
+    p_rgy.add_argument("--model-path", default="", help="Path to .onnx model (for register)")
+    p_rgy.add_argument("--stage", default="production", help="Stage (for promote)")
+    p_rgy.add_argument("--version-b", default="", help="Second version (for diff)")
+    p_rgy.add_argument("--db", default="isat_registry.db")
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -297,6 +353,14 @@ def main(argv: list[str] | None = None) -> int:
             "visualize": _cmd_visualize,
             "snapshot": _cmd_snapshot,
             "batch": _cmd_batch,
+            "scan": _cmd_scan,
+            "regression": _cmd_regression,
+            "compat-matrix": _cmd_compat_matrix,
+            "thermal": _cmd_thermal,
+            "quant-sensitivity": _cmd_quant_sensitivity,
+            "pipeline": _cmd_pipeline,
+            "recommend": _cmd_recommend,
+            "registry": _cmd_registry,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -924,7 +988,9 @@ def _cmd_profile(args) -> int:
         print(f"Error: model not found: {args.model}")
         return 1
 
-    profiler = LatencyProfiler(args.model, provider=args.provider, steady_state_runs=args.runs)
+    profiler = LatencyProfiler(
+        args.model, provider=args.provider, steady_state_runs=args.runs, warmup=args.warmup
+    )
     breakdown = profiler.profile()
 
     print(f"\n{'='*60}")
@@ -1238,6 +1304,232 @@ def _cmd_batch(args) -> int:
     print(f"{'='*65}")
     print(profile.summary())
     print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_scan(args) -> int:
+    from isat.scanner.checker import ModelScanner
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    scanner = ModelScanner()
+    result = scanner.scan(args.model)
+    print(f"\n{'='*70}")
+    print(f"  ONNX MODEL SECURITY & COMPLIANCE SCAN")
+    print(f"{'='*70}")
+    print(result.summary())
+    print(f"{'='*70}\n")
+    return 0 if result.passed else 1
+
+
+def _cmd_regression(args) -> int:
+    from isat.regression.detector import RegressionDetector
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+
+    detector = RegressionDetector(db_path=args.db)
+
+    if args.history:
+        from isat.fingerprint.model import fingerprint_model
+        fp = fingerprint_model(args.model)
+        hist = detector.history(fp.name)
+        print(f"\n{'='*70}")
+        print(f"  REGRESSION HISTORY: {fp.name}")
+        print(f"{'='*70}")
+        print(hist.summary())
+        print(f"{'='*70}\n")
+        return 0
+
+    import numpy as np
+    import onnxruntime as ort
+
+    from isat.fingerprint.model import fingerprint_model
+    fp = fingerprint_model(args.model)
+
+    session = ort.InferenceSession(
+        args.model,
+        providers=[args.provider, "CPUExecutionProvider"],
+    )
+    feed = {}
+    for inp in session.get_inputs():
+        shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
+        if "int" in inp.type.lower():
+            feed[inp.name] = np.ones(shape, dtype=np.int64)
+        elif "float16" in inp.type.lower():
+            feed[inp.name] = np.random.randn(*shape).astype(np.float16)
+        else:
+            feed[inp.name] = np.random.randn(*shape).astype(np.float32)
+
+    for _ in range(3):
+        session.run(None, feed)
+
+    latencies = []
+    for _ in range(args.runs):
+        t0 = time.perf_counter()
+        session.run(None, feed)
+        latencies.append((time.perf_counter() - t0) * 1000)
+
+    if args.set_baseline:
+        detector.save_baseline(fp.name, latencies, is_baseline=True)
+        mean = float(np.mean(latencies))
+        print(f"\nBaseline saved: {fp.name} = {mean:.2f} ms ({args.runs} runs)\n")
+        return 0
+
+    result = detector.check(fp.name, latencies, threshold_pct=args.threshold)
+    print(f"\n{'='*70}")
+    print(f"  REGRESSION CHECK: {fp.name}")
+    print(f"{'='*70}")
+    print(result.summary())
+    print(f"{'='*70}\n")
+    return 1 if result.regressed else 0
+
+
+def _cmd_compat_matrix(args) -> int:
+    from isat.compat_matrix.matrix import CompatMatrix
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    matrix = CompatMatrix()
+    result = matrix.check(args.model)
+    print(f"\n{'='*75}")
+    print(f"  OPERATOR COMPATIBILITY MATRIX")
+    print(f"{'='*75}")
+    print(result.summary())
+    print(f"{'='*75}\n")
+    return 0
+
+
+def _cmd_thermal(args) -> int:
+    from isat.thermal.monitor import ThermalMonitor
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    monitor = ThermalMonitor(args.model, provider=args.provider, runs=args.runs)
+    profile = monitor.monitor()
+    print(f"\n{'='*65}")
+    print(f"  THERMAL THROTTLE ANALYSIS")
+    print(f"{'='*65}")
+    print(profile.summary())
+    print(f"{'='*65}\n")
+    return 1 if profile.throttled else 0
+
+
+def _cmd_quant_sensitivity(args) -> int:
+    from isat.quant_sensitivity.analyzer import QuantSensitivityAnalyzer
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    analyzer = QuantSensitivityAnalyzer(args.model)
+    report = analyzer.analyze()
+    print(f"\n{'='*70}")
+    print(f"  QUANTIZATION SENSITIVITY ANALYSIS")
+    print(f"{'='*70}")
+    print(report.summary())
+    print(f"{'='*70}\n")
+    return 0
+
+
+def _cmd_pipeline(args) -> int:
+    from isat.pipeline.optimizer import PipelineOptimizer
+    stages = []
+    for entry in args.models:
+        if ":" in entry:
+            name, path = entry.split(":", 1)
+        else:
+            name = Path(entry).stem
+            path = entry
+        stages.append((name, path))
+
+    optimizer = PipelineOptimizer(stages, provider=args.provider, runs=args.runs)
+    profile = optimizer.profile()
+    print(f"\n{'='*75}")
+    print(f"  PIPELINE ANALYSIS")
+    print(f"{'='*75}")
+    print(profile.summary())
+    print(f"{'='*75}\n")
+    return 0
+
+
+def _cmd_recommend(args) -> int:
+    from isat.recommend.advisor import HardwareAdvisor
+    if not Path(args.model).exists():
+        print(f"Error: model not found: {args.model}")
+        return 1
+    advisor = HardwareAdvisor()
+    report = advisor.recommend(
+        args.model,
+        max_latency_ms=args.max_latency,
+        max_cost_hr=args.max_cost,
+        prefer_amd=args.prefer_amd,
+    )
+    print(f"\n{'='*80}")
+    print(f"  HARDWARE RECOMMENDATIONS")
+    print(f"{'='*80}")
+    print(report.summary())
+    print(f"{'='*80}\n")
+    return 0
+
+
+def _cmd_registry(args) -> int:
+    from isat.registry.store import ModelRegistry
+    registry = ModelRegistry(db_path=args.db)
+
+    if args.action == "register":
+        if not args.model_name or not args.version or not args.model_path:
+            print("Error: --model-name, --version, and --model-path required")
+            return 1
+        v = registry.register(args.model_name, args.version, args.model_path)
+        print(f"\nRegistered: {v.model_name} v{v.version} (SHA256: {v.sha256[:16]}...)\n")
+        return 0
+
+    elif args.action == "list":
+        listing = registry.list_models(model_name=args.model_name, stage=args.stage if args.stage != "production" else "")
+        print(f"\n{'='*70}")
+        print(f"  MODEL REGISTRY")
+        print(f"{'='*70}")
+        print(listing.summary())
+        print(f"{'='*70}\n")
+        return 0
+
+    elif args.action == "promote":
+        if not args.model_name or not args.version:
+            print("Error: --model-name and --version required")
+            return 1
+        registry.promote(args.model_name, args.version, stage=args.stage)
+        print(f"\nPromoted: {args.model_name} v{args.version} -> {args.stage}\n")
+        return 0
+
+    elif args.action == "diff":
+        if not args.model_name or not args.version or not args.version_b:
+            print("Error: --model-name, --version, and --version-b required")
+            return 1
+        diff = registry.diff_versions(args.model_name, args.version, args.version_b)
+        print(f"\n{'='*60}")
+        print(f"  VERSION DIFF")
+        print(f"{'='*60}")
+        print(diff.summary())
+        print(f"{'='*60}\n")
+        return 0
+
+    elif args.action == "show":
+        if not args.model_name or not args.version:
+            print("Error: --model-name and --version required")
+            return 1
+        v = registry.get_version(args.model_name, args.version)
+        if not v:
+            print(f"Version not found: {args.model_name} v{args.version}")
+            return 1
+        print(f"\n  {v.model_name} v{v.version}")
+        print(f"  Stage  : {v.stage}")
+        print(f"  Path   : {v.model_path}")
+        print(f"  SHA256 : {v.sha256[:32]}...")
+        print(f"  Config : {json.dumps(v.config, indent=2)}")
+        if v.metrics:
+            print(f"  Metrics: {json.dumps(v.metrics, indent=2)}")
+        print()
+        return 0
+
     return 0
 
 

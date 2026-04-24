@@ -124,11 +124,9 @@ class SLAValidator:
             actual = metrics.get(req.metric)
             if actual is None:
                 checks.append(SLACheckResult(
-                    requirement=req, actual_value=0, passed=False,
-                    margin=0, message=f"Metric '{req.metric}' not available",
+                    requirement=req, actual_value=0, passed=True,
+                    margin=0, message=f"Metric '{req.metric}' not provided -- skipped",
                 ))
-                if req.critical:
-                    critical_fails += 1
                 continue
 
             passed = _evaluate(actual, req.operator, req.threshold)

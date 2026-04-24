@@ -25,14 +25,15 @@ from isat import __version__
 
 BANNER = (
     r"""
-  _ ____    _  _____
- (_) ___|  / \|_   _|
- | \___ \ / _ \ | |
- | |___) / ___ \| |
- |_|____/_/   \_\_|
+  ___ ____    _  _____
+ |_ _/ ___|  / \|_   _|
+  | |\___ \ / _ \ | |
+  | | ___) / ___ \| |
+ |___|____/_/   \_\_|
 
 """
     + f"  Inference Stack Auto-Tuner v{__version__}\n"
+    + "  by Sudheer Ibrahim Daniel Devu\n"
 )
 
 

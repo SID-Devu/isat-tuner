@@ -4,6 +4,8 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/isat-tuner.svg)](https://pypi.org/project/isat-tuner/)
 
+**By Sudheer Ibrahim Daniel Devu**
+
 **One command to find the fastest inference configuration for any ONNX model on any GPU.**
 
 ISAT jointly searches across **6 dimensions** -- memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- then benchmarks each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.

@@ -431,6 +431,84 @@ print(f"Running on: {{session.get_providers()[0]}}")
 
 
 # ---------------------------------------------------------------------------
+# Windows DirectML recipes (works for ANY GPU: AMD, NVIDIA, Intel, Qualcomm)
+# ---------------------------------------------------------------------------
+
+def _directml_recipes(hw: HardwareProfile, gpu: DetectedGPU,
+                      model_path: str, model_mb: float) -> list[InferenceRecipe]:
+    recipes = []
+    runtime_gb = _estimate_runtime_mem(model_mb) / 1024
+
+    python_code = f"""\
+import onnxruntime as ort
+
+sess_opts = ort.SessionOptions()
+sess_opts.log_severity_level = 3
+
+providers = [
+    "DmlExecutionProvider",
+    "CPUExecutionProvider",
+]
+
+session = ort.InferenceSession("{model_path}", sess_opts, providers=providers)
+
+# CRITICAL: verify DML is active (ORT silently falls back to CPU)
+active_ep = session.get_providers()[0]
+assert "Dml" in active_ep, f"Expected DmlExecutionProvider but got {{active_ep}}"
+print(f"Running on: {{active_ep}}")
+"""
+
+    notes = [
+        f"Windows detected — using DirectML EP (WinML → DirectX 12 → {gpu.name})",
+        "DirectML works with ANY GPU on Windows (AMD, NVIDIA, Intel, Qualcomm)",
+        f"GPU: {gpu.name} ({gpu.gpu_type.upper()}, {gpu.vram_mb}MB VRAM)" if gpu.vram_mb else
+        f"GPU: {gpu.name} ({gpu.gpu_type.upper()}, shared system memory)",
+    ]
+    warnings = []
+    setup = []
+
+    if model_mb > 2000:
+        warnings.append(f"Large model ({model_mb:.0f}MB) — may need significant GPU/system memory")
+    if gpu.gpu_type in ("apu", "igpu"):
+        notes.append(f"iGPU/APU uses shared system RAM ({hw.system_ram_mb // 1024}GB available)")
+
+    recipes.append(InferenceRecipe(
+        title="DirectML EP — Windows GPU Acceleration (Best for Windows)",
+        provider="DmlExecutionProvider",
+        provider_options={},
+        session_options={"log_severity_level": "3"},
+        env_vars={},
+        install_cmd="pip install onnxruntime-directml",
+        setup_steps=setup,
+        python_code=python_code,
+        notes=notes,
+        warnings=warnings,
+        estimated_memory_gb=runtime_gb,
+    ))
+
+    # DML with graph opt disabled (for models that crash DML's custom registry)
+    recipes.append(InferenceRecipe(
+        title="DirectML EP — Graph Optimizations Disabled (Fallback)",
+        provider="DmlExecutionProvider",
+        provider_options={},
+        session_options={
+            "graph_optimization_level": "ORT_DISABLE_ALL",
+            "log_severity_level": "3",
+        },
+        env_vars={},
+        install_cmd="pip install onnxruntime-directml",
+        notes=[
+            "Use this if the default DML config crashes with AbiCustomRegistry errors",
+            "Disables ORT graph optimizations that can conflict with DirectML's internal ops",
+            "Models known to need this: CrossFormer, OpenVLA (dml_disable_graph_opt=True)",
+        ],
+        estimated_memory_gb=runtime_gb,
+    ))
+
+    return recipes
+
+
+# ---------------------------------------------------------------------------
 # CPU-only fallback
 # ---------------------------------------------------------------------------
 
@@ -502,19 +580,34 @@ def generate_recommendations(hw: HardwareProfile,
         report.recipes = _cpu_recipes(hw, model_path, model_mb)
         return report
 
-    vendor_map = {
-        "amd": _amd_recipes,
-        "nvidia": _nvidia_recipes,
-        "intel": _intel_recipes,
-        "apple": _apple_recipes,
-        "qualcomm": _qualcomm_recipes,
-    }
+    is_windows = hw.os_name == "windows"
 
-    generator = vendor_map.get(gpu.vendor)
-    if generator:
-        report.recipes = generator(hw, gpu, model_path, model_mb)
+    # On Windows, DirectML works for ANY GPU vendor (AMD, NVIDIA, Intel, Qualcomm)
+    if is_windows:
+        report.recipes = _directml_recipes(hw, gpu, model_path, model_mb)
+        # Also add vendor-specific recipes as alternatives
+        vendor_map = {
+            "amd": _amd_recipes,
+            "nvidia": _nvidia_recipes,
+            "intel": _intel_recipes,
+            "qualcomm": _qualcomm_recipes,
+        }
+        alt_gen = vendor_map.get(gpu.vendor)
+        if alt_gen:
+            report.recipes.extend(alt_gen(hw, gpu, model_path, model_mb))
     else:
-        report.recipes = _cpu_recipes(hw, model_path, model_mb)
+        vendor_map = {
+            "amd": _amd_recipes,
+            "nvidia": _nvidia_recipes,
+            "intel": _intel_recipes,
+            "apple": _apple_recipes,
+            "qualcomm": _qualcomm_recipes,
+        }
+        generator = vendor_map.get(gpu.vendor)
+        if generator:
+            report.recipes = generator(hw, gpu, model_path, model_mb)
+        else:
+            report.recipes = _cpu_recipes(hw, model_path, model_mb)
 
     return report
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.8.3] - 2026-04-27
+
+### Added
+- **Windows DirectML Support**: `isat tune` now generates DirectML EP scripts on Windows
+  for ANY GPU (AMD, NVIDIA, Intel, Qualcomm) via WinML → DirectX 12
+- **Windows GPU Detection**: Auto-detects GPU on Windows via WMI/PowerShell
+  (Get-CimInstance Win32_VideoController) — identifies vendor, VRAM, driver, type
+- **Windows System Helpers**: RAM, swap, and CPU detection now work on Windows
+  (was Linux/macOS only)
+- **DirectML Script Template**: Full script with preflight checks, DML EP config,
+  P50/P95 stats, copyright, zero-fallback for index-based ops
+- **DirectML Recipes**: Two recipes per GPU — default DML + graph-opt-disabled fallback
+  (for models needing dml_disable_graph_opt like CrossFormer, OpenVLA)
+- **Execution Path Documentation**: Scripts show the full execution path:
+  `WinML → ONNX Runtime → DirectML EP → DirectX 12 → GPU`
+
 ## [0.8.2] - 2026-04-27
 
 ### Fixed

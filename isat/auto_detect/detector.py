@@ -407,6 +407,118 @@ def _detect_qualcomm() -> Optional[DetectedGPU]:
 
 
 # ---------------------------------------------------------------------------
+# Windows GPU detection via WMI / PowerShell
+# ---------------------------------------------------------------------------
+
+def _detect_windows_gpu() -> Optional[DetectedGPU]:
+    """Detect GPU on Windows via PowerShell (Get-CimInstance Win32_VideoController)."""
+    if platform.system() != "Windows":
+        return None
+
+    out = _run([
+        "powershell", "-NoProfile", "-Command",
+        "Get-CimInstance Win32_VideoController | "
+        "Select-Object Name,AdapterRAM,DriverVersion,VideoProcessor,PNPDeviceID | "
+        "Format-List"
+    ], timeout=15)
+    if not out:
+        return None
+
+    name = ""
+    vram_bytes = 0
+    driver_ver = ""
+    pnp_id = ""
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith("Name"):
+            name = line.split(":", 1)[1].strip()
+        elif line.startswith("AdapterRAM"):
+            try:
+                vram_bytes = int(line.split(":", 1)[1].strip())
+            except (ValueError, IndexError):
+                pass
+        elif line.startswith("DriverVersion"):
+            driver_ver = line.split(":", 1)[1].strip()
+        elif line.startswith("PNPDeviceID"):
+            pnp_id = line.split(":", 1)[1].strip()
+
+    if not name:
+        return None
+
+    low = name.lower()
+    gpu = DetectedGPU(name=name, driver_version=driver_ver, pci_id=pnp_id)
+    gpu.vram_mb = vram_bytes // (1024 * 1024) if vram_bytes > 0 else 0
+
+    if "amd" in low or "radeon" in low or "ati" in low:
+        gpu.vendor = "amd"
+        gpu.driver = "amdgpu-pro / WinML"
+        gpu.supports_fp16 = True
+        gpu.supports_int8 = True
+        if any(k in low for k in ["780m", "760m", "890m", "8060", "radeon graphics"]):
+            gpu.gpu_type = "apu"
+            gpu.arch = "RDNA 3.5"
+            gpu.matrix_cores = "WMMA"
+            gpu.supports_bf16 = True
+            gpu.shared_mem_mb = _system_ram_mb()
+        elif any(k in low for k in ["7900", "7800", "7700", "7600", "6900", "6800", "6700"]):
+            gpu.gpu_type = "dgpu"
+            gpu.arch = "RDNA 3" if "7" in name else "RDNA 2"
+            gpu.matrix_cores = "WMMA"
+            gpu.supports_bf16 = True
+        else:
+            gpu.gpu_type = "dgpu"
+            gpu.arch = "RDNA"
+            gpu.matrix_cores = "WMMA"
+    elif "nvidia" in low or "geforce" in low or "rtx" in low or "gtx" in low or "quadro" in low:
+        gpu.vendor = "nvidia"
+        gpu.driver = "nvidia"
+        gpu.supports_fp16 = True
+        gpu.supports_int8 = True
+        if any(k in low for k in ["40", "rtx 50", "a100", "h100", "l40"]):
+            gpu.matrix_cores = "Tensor Core (4th gen)"
+            gpu.supports_bf16 = True
+            gpu.supports_fp8 = True
+            gpu.arch = "Ada Lovelace"
+        elif any(k in low for k in ["30", "a6000", "a5000"]):
+            gpu.matrix_cores = "Tensor Core (3rd gen)"
+            gpu.supports_bf16 = True
+            gpu.arch = "Ampere"
+        elif "20" in low or "rtx" in low:
+            gpu.matrix_cores = "Tensor Core"
+            gpu.arch = "Turing"
+        else:
+            gpu.matrix_cores = "CUDA Cores"
+            gpu.arch = "NVIDIA"
+        gpu.gpu_type = "dgpu"
+    elif "intel" in low:
+        gpu.vendor = "intel"
+        gpu.driver = "Intel Graphics"
+        gpu.supports_fp16 = True
+        gpu.supports_int8 = True
+        if any(k in low for k in ["arc", "a770", "a750", "a580", "a380", "b580"]):
+            gpu.gpu_type = "dgpu"
+            gpu.arch = "Xe-HPG"
+            gpu.matrix_cores = "XMX"
+        else:
+            gpu.gpu_type = "igpu"
+            gpu.arch = "Xe/Gen12"
+            gpu.shared_mem_mb = _system_ram_mb()
+    elif "qualcomm" in low or "adreno" in low:
+        gpu.vendor = "qualcomm"
+        gpu.driver = "Qualcomm"
+        gpu.gpu_type = "soc"
+        gpu.arch = "Adreno"
+        gpu.supports_fp16 = True
+        gpu.supports_int8 = True
+        gpu.shared_mem_mb = _system_ram_mb()
+    else:
+        gpu.vendor = "unknown"
+        gpu.gpu_type = "dgpu"
+
+    return gpu
+
+
+# ---------------------------------------------------------------------------
 # Fallback: lspci scan for any GPU
 # ---------------------------------------------------------------------------
 
@@ -442,6 +554,14 @@ def _detect_lspci_fallback() -> Optional[DetectedGPU]:
 # ---------------------------------------------------------------------------
 
 def _system_ram_mb() -> int:
+    if platform.system() == "Windows":
+        out = _run(["powershell", "-NoProfile", "-Command",
+                     "(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory"])
+        if out:
+            try:
+                return int(out.strip()) // (1024 * 1024)
+            except ValueError:
+                pass
     if platform.system() == "Darwin":
         out = _run(["sysctl", "-n", "hw.memsize"])
         if out:
@@ -457,6 +577,14 @@ def _system_ram_mb() -> int:
 
 
 def _swap_mb() -> int:
+    if platform.system() == "Windows":
+        out = _run(["powershell", "-NoProfile", "-Command",
+                     "(Get-CimInstance Win32_PageFileUsage | Measure-Object -Property AllocatedBaseSize -Sum).Sum"])
+        if out:
+            try:
+                return int(out.strip())
+            except ValueError:
+                pass
     try:
         info = Path("/proc/meminfo").read_text()
         for line in info.splitlines():
@@ -468,6 +596,11 @@ def _swap_mb() -> int:
 
 
 def _cpu_name() -> str:
+    if platform.system() == "Windows":
+        out = _run(["powershell", "-NoProfile", "-Command",
+                     "(Get-CimInstance Win32_Processor).Name"])
+        if out:
+            return out.strip()
     if platform.system() == "Darwin":
         out = _run(["sysctl", "-n", "machdep.cpu.brand_string"])
         return out.strip() if out else platform.processor()
@@ -497,6 +630,8 @@ def detect_hardware() -> HardwareProfile:
         swap_mb=_swap_mb(),
     )
 
+    is_windows = platform.system() == "Windows"
+
     # Try vendor-specific detection in priority order
     amd = _detect_amd_rocminfo()
     if amd:
@@ -520,7 +655,13 @@ def detect_hardware() -> HardwareProfile:
     if qualcomm:
         profile.gpus.append(qualcomm)
 
-    # If nothing found via vendor tools, try lspci fallback
+    # Windows: use WMI/PowerShell if no GPU found via CLI tools
+    if not profile.gpus and is_windows:
+        win_gpu = _detect_windows_gpu()
+        if win_gpu:
+            profile.gpus.append(win_gpu)
+
+    # If nothing found via vendor tools, try lspci fallback (Linux)
     if not profile.gpus:
         fb = _detect_lspci_fallback()
         if fb:

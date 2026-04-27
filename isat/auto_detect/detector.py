@@ -51,6 +51,7 @@ class HardwareProfile:
     rocm_version: str = ""
     cuda_version: str = ""
     openvino_version: str = ""
+    winml_ep_path: str = ""               # path to WinML AMD EP AppX (MIGraphX on Windows)
 
     @property
     def vendor(self) -> str:
@@ -519,6 +520,34 @@ def _detect_windows_gpu() -> Optional[DetectedGPU]:
 
 
 # ---------------------------------------------------------------------------
+# Windows: Detect WinML AMD MIGraphX EP AppX package
+# ---------------------------------------------------------------------------
+
+def _detect_winml_migraphx_ep() -> str:
+    """Find the WinML AMD GPU EP AppX package (ships onnxruntime_providers_migraphx.dll).
+    Returns the ExecutionProvider directory path, or empty string if not found."""
+    if platform.system() != "Windows":
+        return ""
+    out = _run([
+        "powershell", "-NoProfile", "-Command",
+        "(Get-AppxPackage -Name 'MicrosoftCorporationII.WinML.AMD.GPU.EP*').InstallLocation"
+    ], timeout=15)
+    if not out:
+        return ""
+    install_loc = out.strip().splitlines()[0].strip()
+    if not install_loc:
+        return ""
+    ep_dir = install_loc + "\\ExecutionProvider"
+    migraphx_dll = ep_dir + "\\onnxruntime_providers_migraphx.dll"
+    try:
+        if Path(migraphx_dll).exists():
+            return ep_dir
+    except OSError:
+        pass
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Fallback: lspci scan for any GPU
 # ---------------------------------------------------------------------------
 
@@ -660,6 +689,10 @@ def detect_hardware() -> HardwareProfile:
         win_gpu = _detect_windows_gpu()
         if win_gpu:
             profile.gpus.append(win_gpu)
+
+    # Windows: detect WinML AMD MIGraphX EP AppX package
+    if is_windows:
+        profile.winml_ep_path = _detect_winml_migraphx_ep()
 
     # If nothing found via vendor tools, try lspci fallback (Linux)
     if not profile.gpus:

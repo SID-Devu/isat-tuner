@@ -431,6 +431,74 @@ print(f"Running on: {{session.get_providers()[0]}}")
 
 
 # ---------------------------------------------------------------------------
+# Windows MIGraphX EP via WinML CompileApi (AMD GPU only)
+# ---------------------------------------------------------------------------
+
+def _winml_migraphx_recipes(hw: HardwareProfile, gpu: DetectedGPU,
+                             model_path: str, model_mb: float) -> list[InferenceRecipe]:
+    recipes = []
+    runtime_gb = _estimate_runtime_mem(model_mb) / 1024
+    ep_dir = hw.winml_ep_path
+
+    python_code = f"""\
+import os
+import onnxruntime as ort
+
+# 1. Add the WinML AMD EP DLL directory
+ep_dir = r'{ep_dir}'
+os.add_dll_directory(ep_dir)
+
+# 2. Register MIGraphX provider via CompileApi
+ort.register_execution_provider_library(
+    'MIGraphXExecutionProvider',
+    os.path.join(ep_dir, 'onnxruntime_providers_migraphx.dll')
+)
+
+# 3. Get EP devices and add to session
+devices = ort.get_ep_devices()
+migraphx_dev = [d for d in devices if d.ep_name == 'MIGraphXExecutionProvider']
+cpu_dev = [d for d in devices if d.ep_name == 'CPUExecutionProvider']
+
+so = ort.SessionOptions()
+so.log_severity_level = 3
+so.add_provider_for_devices(migraphx_dev, {{}})
+so.add_provider_for_devices(cpu_dev, {{}})
+
+# 4. Create session (NO providers= arg — CompileApi handles it)
+session = ort.InferenceSession("{model_path}", so)
+
+active_ep = session.get_providers()[0]
+assert "MIGraphX" in active_ep, f"Expected MIGraphX but got {{active_ep}}"
+print(f"Running on: {{active_ep}}")
+"""
+
+    recipes.append(InferenceRecipe(
+        title="MIGraphX EP via WinML CompileApi (Best Performance — AMD Windows)",
+        provider="MIGraphXExecutionProvider",
+        provider_options={},
+        session_options={"log_severity_level": "3"},
+        env_vars={},
+        install_cmd="pip install onnxruntime\n# WinML AMD EP AppX package must be installed (via Microsoft Store / MSIX)",
+        setup_steps=[
+            f"WinML AMD EP detected: {ep_dir}",
+            "Uses ORT CompileApi: register_execution_provider_library + add_provider_for_devices",
+            "IMPORTANT: Do NOT use providers= in InferenceSession() — use SessionOptions.add_provider_for_devices()",
+            "First run compiles the MIGraphX graph (~30-60s) — subsequent runs are fast",
+        ],
+        python_code=python_code,
+        notes=[
+            f"AMD GPU detected ({gpu.name}) with WinML MIGraphX EP installed",
+            "Execution path: Python → ORT CompileApi → WinML → MIGraphX EP → AMD GPU",
+            "MIGraphX provides native FP16 quantization and graph fusion — fastest for large models",
+            "Falls back to CPU for unsupported ops automatically",
+        ],
+        estimated_memory_gb=runtime_gb,
+    ))
+
+    return recipes
+
+
+# ---------------------------------------------------------------------------
 # Windows DirectML recipes (works for ANY GPU: AMD, NVIDIA, Intel, Qualcomm)
 # ---------------------------------------------------------------------------
 
@@ -584,7 +652,12 @@ def generate_recommendations(hw: HardwareProfile,
 
     # On Windows, DirectML works for ANY GPU vendor (AMD, NVIDIA, Intel, Qualcomm)
     if is_windows:
-        report.recipes = _directml_recipes(hw, gpu, model_path, model_mb)
+        # If WinML AMD MIGraphX EP is installed, offer it as the BEST option
+        if hw.winml_ep_path and gpu.vendor == "amd":
+            report.recipes = _winml_migraphx_recipes(hw, gpu, model_path, model_mb)
+        else:
+            report.recipes = []
+        report.recipes.extend(_directml_recipes(hw, gpu, model_path, model_mb))
         # Also add vendor-specific recipes as alternatives
         vendor_map = {
             "amd": _amd_recipes,

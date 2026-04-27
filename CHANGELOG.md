@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.8.4] - 2026-04-27
+
+### Added
+- **Windows MIGraphX EP via WinML CompileApi**: Native MIGraphX acceleration on Windows
+  without WSL2 — uses the WinML AMD GPU EP AppX package
+  (`MicrosoftCorporationII.WinML.AMD.GPU.EP`) with ORT 1.23+ CompileApi:
+  `register_execution_provider_library()` + `add_provider_for_devices()`
+- **WinML EP AppX Detection**: Auto-detects installed WinML AMD EP package via PowerShell
+- **CompileApi Script Template**: Generates scripts using the correct CompileApi path
+  (NOT `providers=` in `InferenceSession()` which silently falls back to CPU)
+- **Recipe Priority**: On Windows + AMD GPU + WinML EP installed:
+  MIGraphX (CompileApi) > DirectML > CPU
+
+### Execution Paths (all supported)
+```
+Windows + WinML EP:  ORT CompileApi → WinML → MIGraphX EP → AMD GPU
+Windows + DML:       ORT → DirectML EP → DirectX 12 → Any GPU
+WSL2 + MIGraphX:     HIP → HSA → ROCDXG → /dev/dxg → GPU
+Linux Baremetal:     HIP → HSA → amdgpu → GPU
+```
+
 ## [0.8.3] - 2026-04-27
 
 ### Added

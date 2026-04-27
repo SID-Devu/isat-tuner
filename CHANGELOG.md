@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.8.1] - 2026-04-27
+
+### Added
+- **Auto-Generated Inference Scripts**: `isat tune MODEL.onnx` now generates a complete,
+  runnable Python script (`isat_output/<model>_inference.py`) with:
+  - Professional header (copyright, hardware fingerprint, generation timestamp)
+  - Pre-flight system checks (GPU, XNACK, swap, ORT, model file)
+  - Correct environment variables set BEFORE importing ORT
+  - MIGraphX/TensorRT/OpenVINO/CoreML/QNN provider configuration
+  - Random-input warmup + timed benchmark with P50/P95/FPS stats
+  - EP verification (catches ORT silent CPU fallback)
+- Scripts are vendor-specific: AMD APU, AMD dGPU, NVIDIA, Intel, Apple, Qualcomm, CPU-only
+- Large models (>500MB) get template-depth HIP flags and swap sizing checks
+- Tested on real hardware: MobileNetV2 on Strix Halo APU = 0.49ms / 2021 FPS
+
 ## [0.8.0] - 2026-04-27
 
 ### Added
@@ -21,7 +36,7 @@
 - `isat tune MODEL.onnx --detect-only` — detect hardware + model-specific recommendations
   without running benchmarks
 - `isat tune --json` — machine-readable JSON output of hardware and recommendations
-- New module: `isat.auto_detect` (detector.py + recommender.py)
+- New module: `isat.auto_detect` (detector.py + recommender.py + script_gen.py)
 
 ## [0.7.8] - 2026-04-24
 

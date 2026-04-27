@@ -613,6 +613,15 @@ def _cmd_tune(args) -> int:
 
     print(format_report(report))
 
+    # Generate and save inference script if model is provided
+    if model_path and Path(model_path).exists():
+        from isat.auto_detect.script_gen import save_script
+        output_dir = getattr(args, "output_dir", "isat_output")
+        script_path = save_script(hw_profile, model_path, output_dir)
+        print(f"  SCRIPT GENERATED: {script_path}")
+        print(f"  Run it directly:  python3 {script_path}")
+        print()
+
     if not model_path or args.detect_only:
         if not model_path:
             print("  TIP: Provide a model to get specific tuning recommendations:")

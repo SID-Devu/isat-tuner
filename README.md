@@ -7,17 +7,20 @@
 [![GitHub stars](https://img.shields.io/github/stars/SID-Devu/isat-tuner.svg)](https://github.com/SID-Devu/isat-tuner)
 [![GitHub release](https://img.shields.io/github/v/release/SID-Devu/isat-tuner)](https://github.com/SID-Devu/isat-tuner/releases)
 
-> **One command to find the fastest inference configuration for any ONNX model on any GPU.**
+> **One command to detect your hardware, recommend the optimal setup, and auto-tune any ONNX model -- on any GPU from any vendor.**
 
-ISAT is a production-grade CLI toolkit for ONNX inference optimization. It jointly searches across memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- then benchmarks each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
+ISAT is a production-grade CLI toolkit for ONNX inference optimization. It auto-detects your hardware (AMD, NVIDIA, Intel, Apple, Qualcomm), classifies it (iGPU/dGPU/APU/SoC), and generates copy-paste-ready inference configurations. Then it jointly searches across memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- benchmarking each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
 
 ```bash
-# Recommended (no venv needed, PATH handled automatically):
-pipx install isat-tuner
-
-# Or with pip:
 pip install isat-tuner
 
+# Detect your hardware and get instant recommendations:
+isat tune
+
+# Detect + recommend + auto-tune a specific model:
+isat tune model.onnx
+
+# Full production tuning with cloud profile:
 isat tune model.onnx --profile cloud
 ```
 
@@ -53,7 +56,7 @@ A single wrong choice can leave **40%+ performance on the table**. With 6 dimens
 ### Auto-Tuning & Search
 | Command | What it does |
 |---------|-------------|
-| `isat tune` | Auto-tune an ONNX model across all search dimensions |
+| `isat tune` | Auto-detect hardware + recommend + tune (works with or without a model) |
 | `isat profiles` | List available tuning profiles (edge, cloud, latency, etc.) |
 | `isat init` | Generate a default `isat.yaml` config file |
 | `isat batch` | Find optimal batch size (latency vs throughput tradeoff) |

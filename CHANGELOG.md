@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.8.0] - 2026-04-27
+
+### Added
+- **Universal Hardware Auto-Detection**: `isat tune` now auto-detects your hardware
+  vendor (AMD, NVIDIA, Intel, Apple, Qualcomm) and classifies it as iGPU, dGPU, APU,
+  or SoC — works on any OS (Linux, macOS, Windows)
+- **Inference Recommendations**: For each detected hardware, generates copy-paste-ready
+  Python code, environment variables, install commands, and setup steps to run your model
+- **AMD APU-specific guidance**: Based on the R1/R2 report (23 models on Strix Halo),
+  recommends HSA_XNACK, MIGraphX compile flags, swap sizing, kernel boot params,
+  and subprocess isolation for large models
+- **NVIDIA support**: TensorRT EP + CUDA EP recipes with engine caching, FP16 config
+- **Intel support**: OpenVINO EP for iGPU/dGPU + CPU INT8 with AMX acceleration
+- **Apple Silicon support**: CoreML EP with Neural Engine acceleration
+- **Qualcomm support**: QNN EP with Hexagon HTP backend
+- **Large model warnings**: Detects when a model won't fit in VRAM and recommends
+  unified memory, swap sizing, and compilation flags
+- `isat tune` now works **without a model** — shows hardware detection + general recommendations
+- `isat tune MODEL.onnx --detect-only` — detect hardware + model-specific recommendations
+  without running benchmarks
+- `isat tune --json` — machine-readable JSON output of hardware and recommendations
+- New module: `isat.auto_detect` (detector.py + recommender.py)
+
 ## [0.7.8] - 2026-04-24
 
 ### Changed

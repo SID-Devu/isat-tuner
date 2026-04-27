@@ -1,7 +1,9 @@
 """ISAT command-line interface.
 
 Usage:
-    isat tune      MODEL.onnx          -- run full auto-tune search
+    isat tune                          -- detect hardware, show inference recommendations
+    isat tune      MODEL.onnx          -- detect hw + recommend + run full auto-tune search
+    isat tune      --detect-only       -- hardware detection only (no model needed)
     isat inspect   MODEL.onnx          -- fingerprint model without benchmarking
     isat hwinfo                        -- print hardware fingerprint
     isat history   [--model NAME]      -- show past tuning results
@@ -98,8 +100,13 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command")
 
     # ── tune ──────────────────────────────────────────────────
-    p_tune = sub.add_parser("tune", help="Auto-tune an ONNX model")
-    p_tune.add_argument("model", help="Path to .onnx model")
+    p_tune = sub.add_parser("tune", help="Auto-detect hardware + tune an ONNX model")
+    p_tune.add_argument("model", nargs="?", default=None,
+                        help="Path to .onnx model (omit for hardware detection only)")
+    p_tune.add_argument("--detect-only", action="store_true",
+                        help="Only detect hardware and show recommendations (no benchmarking)")
+    p_tune.add_argument("--json", action="store_true", dest="tune_json",
+                        help="Output hardware detection as JSON")
     p_tune.add_argument("--warmup", type=int, default=3, help="Warmup iterations (default: 3)")
     p_tune.add_argument("--runs", type=int, default=5, help="Measured iterations (default: 5)")
     p_tune.add_argument("--cooldown", type=float, default=60.0, help="Cooldown between configs (seconds)")
@@ -566,17 +573,66 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _cmd_tune(args) -> int:
+    from isat.auto_detect.detector import detect_hardware
+    from isat.auto_detect.recommender import format_report, generate_recommendations
+
+    print(BANNER)
+    print("[1] Detecting hardware (all vendors)...")
+    hw_profile = detect_hardware()
+    model_path = args.model or ""
+
+    report = generate_recommendations(hw_profile, model_path)
+
+    if getattr(args, "tune_json", False):
+        import dataclasses
+        import json as _json
+        out = {
+            "hardware": {
+                "os": hw_profile.os_name,
+                "cpu": hw_profile.cpu_name,
+                "cpu_cores": hw_profile.cpu_cores,
+                "ram_mb": hw_profile.system_ram_mb,
+                "swap_mb": hw_profile.swap_mb,
+                "gpus": [dataclasses.asdict(g) for g in hw_profile.gpus],
+                "vendor": hw_profile.vendor,
+                "is_apu": hw_profile.is_apu,
+            },
+            "model": model_path,
+            "recipes": [
+                {
+                    "title": r.title,
+                    "provider": r.provider,
+                    "env_vars": r.env_vars,
+                    "install_cmd": r.install_cmd,
+                }
+                for r in report.recipes
+            ],
+        }
+        print(_json.dumps(out, indent=2))
+        return 0
+
+    print(format_report(report))
+
+    if not model_path or args.detect_only:
+        if not model_path:
+            print("  TIP: Provide a model to get specific tuning recommendations:")
+            print("    isat tune model.onnx")
+            print()
+            print("  Or detect hardware only:")
+            print("    isat tune --detect-only")
+            print()
+        return 0
+
+    if not Path(model_path).exists():
+        print(f"Error: model not found: {model_path}")
+        return 1
+
     from isat.benchmark.runner import BenchmarkRunner
     from isat.database.store import ResultsDB
     from isat.fingerprint.hardware import fingerprint_hardware
     from isat.fingerprint.model import fingerprint_model
     from isat.report.generator import ReportGenerator
     from isat.search.engine import SearchEngine
-
-    model_path = args.model
-    if not Path(model_path).exists():
-        print(f"Error: model not found: {model_path}")
-        return 1
 
     warmup, runs, cooldown = args.warmup, args.runs, args.cooldown
     skip_precision, skip_graph = args.skip_precision, args.skip_graph
@@ -594,8 +650,7 @@ def _cmd_tune(args) -> int:
             max_configs = profile.max_configs
         print(f"Using profile: {profile.name} -- {profile.description}")
 
-    print(BANNER)
-    print("[1/6] Fingerprinting hardware...")
+    print("[2/6] Fingerprinting hardware (detailed)...")
     hw = fingerprint_hardware()
 
     print("[2/6] Analyzing model...")

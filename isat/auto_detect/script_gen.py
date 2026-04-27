@@ -35,7 +35,16 @@ def _fingerprint(hw: HardwareProfile, model_path: str) -> str:
 
 
 def _model_basename(model_path: str) -> str:
-    return Path(model_path).stem.replace("-", "_").replace(".", "_")
+    p = Path(model_path)
+    stem = p.stem.replace("-", "_").replace(".", "_")
+    # Generic names like model, model_safe, model_fixed cause collisions —
+    # prefix with parent directory name to disambiguate
+    if stem in ("model", "model_safe", "model_fixed", "encoder_model",
+                "decoder_model", "flow", "action"):
+        parent = p.parent.name.replace("-", "_").replace(".", "_")
+        if parent and parent != ".":
+            stem = f"{parent}_{stem}"
+    return stem
 
 
 # ---------------------------------------------------------------------------
@@ -47,15 +56,16 @@ def _amd_apu_script(hw: HardwareProfile, gpu: DetectedGPU,
     model_name = _model_basename(model_path)
     runtime_gb = model_mb * 2.5 / 1024
     need_swap_warning = runtime_gb > 8
-    need_template_depth = model_mb > 500
     swap_recommended = max(int(runtime_gb * 4), 16)
 
-    env_block = f"""\
+    env_block = """\
 os.environ["HSA_XNACK"] = "1"
+os.environ.setdefault("HSA_ENABLE_DXG_DETECTION", "1")
+os.environ.setdefault("HSA_OVERRIDE_GFX_VERSION", "11.0.0")
 os.environ["MIGRAPHX_GPU_COMPILE_PARALLEL"] = "1"
+os.environ.setdefault("MIGRAPHX_GPU_HIP_FLAGS",
+                       "-ftemplate-depth=2048 -Wno-error=stack-exhausted -Wno-stack-exhausted")
 """
-    if need_template_depth:
-        env_block += 'os.environ["MIGRAPHX_GPU_HIP_FLAGS"] = "-ftemplate-depth=2048 -Wno-error=stack-exhausted"\n'
 
     swap_check = ""
     if need_swap_warning:
@@ -106,6 +116,8 @@ os.environ["MIGRAPHX_GPU_COMPILE_PARALLEL"] = "1"
 """
 
 import os
+import resource
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -113,9 +125,28 @@ from pathlib import Path
 # ============================================================================
 #  ENVIRONMENT CONFIGURATION
 #  These MUST be set BEFORE importing onnxruntime.
+#  Matches the production settings from inference.py (R1/R2 report).
 # ============================================================================
 
 {env_block}
+# Increase process stack size so comgr (in-process LLVM) survives
+# deep template recursion during MIGraphX kernel compilation.
+try:
+    resource.setrlimit(resource.RLIMIT_STACK,
+                       (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+except Exception:
+    pass
+
+# Lift the system-memory limit on GTT allocations so hipHostMalloc
+# can allocate beyond physical RAM using swap-backed pages.
+try:
+    _nsml = open("/sys/module/amdgpu/parameters/no_system_mem_limit").read().strip()
+    if _nsml != "Y":
+        subprocess.run(["sudo", "-S", "sh", "-c",
+                        "echo Y > /sys/module/amdgpu/parameters/no_system_mem_limit"],
+                       input="\\n", text=True, capture_output=True, timeout=5)
+except Exception:
+    pass
 
 # ============================================================================
 #  SYSTEM CHECKS
@@ -182,6 +213,24 @@ def preflight_checks():
         print("  [FAIL] No AMD GPU detected in sysfs")
         ok = False
 {swap_check}
+    # Check no_system_mem_limit
+    try:
+        nsml = open("/sys/module/amdgpu/parameters/no_system_mem_limit").read().strip()
+        if nsml == "Y":
+            print("  [OK] no_system_mem_limit=Y (GTT can use swap)")
+        else:
+            print(f"  [WARNING] no_system_mem_limit={{nsml}} — large models may OOM")
+            print(f"  Fix: sudo sh -c 'echo Y > /sys/module/amdgpu/parameters/no_system_mem_limit'")
+    except Exception:
+        pass
+
+    # Check model external data files
+    model_dir = Path(MODEL_PATH).parent
+    data_files = list(model_dir.glob("*.onnx_data")) + list(model_dir.glob("*.data"))
+    if data_files:
+        total_data = sum(f.stat().st_size for f in data_files) / (1024 * 1024)
+        print(f"  [OK] External data files: {{len(data_files)}} ({{total_data:.0f}} MB)")
+
     # Check ORT
     try:
         import onnxruntime as ort
@@ -233,6 +282,7 @@ def create_session():
 
     sess_opts = ort.SessionOptions()
     sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+    sess_opts.log_severity_level = 3
 
     providers = [
         ("MIGraphXExecutionProvider", {{
@@ -263,10 +313,9 @@ def create_session():
     return session
 
 
-def run_inference(session, warmup: int = 3, measured: int = 10):
-    """Run warmup + measured inference and print timing stats."""
+def _build_inputs(session, use_zeros=False):
+    """Build test inputs. Use zeros for models with index-based ops (GatherND, ScatterND)."""
     import numpy as np
-
     inputs = {{}}
     for inp in session.get_inputs():
         shape = []
@@ -275,7 +324,6 @@ def run_inference(session, warmup: int = 3, measured: int = 10):
                 shape.append(dim)
             else:
                 shape.append(1)
-
         dtype_map = {{
             "tensor(float)": np.float32,
             "tensor(float16)": np.float16,
@@ -286,9 +334,26 @@ def run_inference(session, warmup: int = 3, measured: int = 10):
             "tensor(double)": np.float64,
         }}
         np_dtype = dtype_map.get(inp.type, np.float32)
-        inputs[inp.name] = np.random.randn(*shape).astype(np_dtype)
+        if use_zeros:
+            inputs[inp.name] = np.zeros(shape, dtype=np_dtype)
+        else:
+            inputs[inp.name] = np.random.randn(*shape).astype(np_dtype)
+    return inputs
 
+
+def run_inference(session, warmup: int = 3, measured: int = 10):
+    """Run warmup + measured inference and print timing stats."""
+    import numpy as np
+
+    inputs = _build_inputs(session, use_zeros=False)
     output_names = [o.name for o in session.get_outputs()]
+
+    # Try random data first; if it fails (GatherND/ScatterND index OOB), retry with zeros
+    try:
+        session.run(output_names, inputs)
+    except Exception:
+        print("  [INFO] Random inputs failed (likely index-based ops) — retrying with zeros")
+        inputs = _build_inputs(session, use_zeros=True)
 
     # Warmup
     print(f"Warmup ({{warmup}} iterations)...")
@@ -360,6 +425,10 @@ if __name__ == "__main__":
 def _amd_dgpu_script(hw: HardwareProfile, gpu: DetectedGPU,
                      model_path: str, model_mb: float, fp_hash: str) -> str:
     model_name = _model_basename(model_path)
+    vram_warn = f"""
+    if model_mb > {gpu.vram_mb}:
+        print(f"  [WARNING] Model ({{model_mb:.0f}} MB) > VRAM ({gpu.vram_mb} MB) — may spill to system RAM")
+        ok = False""" if gpu.vram_mb > 0 else ""
 
     return f'''#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -388,31 +457,66 @@ def _amd_dgpu_script(hw: HardwareProfile, gpu: DetectedGPU,
 """
 
 import os
+import resource
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
+# dGPU uses dedicated VRAM — XNACK off (no unified memory needed)
 os.environ["HSA_XNACK"] = "0"
+os.environ.setdefault("MIGRAPHX_GPU_COMPILE_PARALLEL", "1")
+os.environ.setdefault("MIGRAPHX_GPU_HIP_FLAGS",
+                       "-ftemplate-depth=2048 -Wno-error=stack-exhausted -Wno-stack-exhausted")
+
+try:
+    resource.setrlimit(resource.RLIMIT_STACK,
+                       (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+except Exception:
+    pass
 
 MODEL_PATH = r"{model_path}"
 
 
-def main():
+def preflight_checks() -> bool:
+    print("=" * 60)
+    print("  ISAT Pre-flight System Check (AMD dGPU)")
+    print("=" * 60)
+    print()
+    ok = True
+    model_mb = Path(MODEL_PATH).stat().st_size / (1024 * 1024) if Path(MODEL_PATH).exists() else 0
+{vram_warn}
+    try:
+        import onnxruntime as ort
+        providers = ort.get_available_providers()
+        print(f"  [OK] ORT {{ort.__version__}}: {{', '.join(providers)}}")
+        if "MIGraphXExecutionProvider" in providers:
+            print("  [OK] MIGraphX EP available")
+        else:
+            print("  [WARNING] MIGraphX EP not found — will fall back to CPU")
+            ok = False
+    except ImportError:
+        print("  [FAIL] onnxruntime not installed")
+        ok = False
+    if not Path(MODEL_PATH).exists():
+        print(f"  [FAIL] Model not found: {{MODEL_PATH}}")
+        ok = False
+    else:
+        print(f"  [OK] Model found: {{model_mb:.1f}} MB")
+    print()
+    if ok:
+        print("  All checks passed.")
+    print("=" * 60)
+    print()
+    return ok
+
+
+def create_session():
     import onnxruntime as ort
-
-    print()
-    print("=" * 60)
-    print("  ISAT Inference — AMD dGPU")
-    print(f"  Model: {{Path(MODEL_PATH).name}}")
-    print(f"  GPU  : {gpu.name} ({gpu.arch}, {gpu.vram_mb}MB VRAM)")
-    print("=" * 60)
-    print()
-
     sess_opts = ort.SessionOptions()
     sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
-
+    sess_opts.log_severity_level = 3
     providers = [
         ("MIGraphXExecutionProvider", {{
             "migraphx_fp16_enable": "1",
@@ -420,41 +524,78 @@ def main():
         }}),
         "CPUExecutionProvider",
     ]
-
-    print("Loading and compiling model...")
+    print("Loading and compiling model with MIGraphX EP...")
     t0 = time.perf_counter()
     session = ort.InferenceSession(MODEL_PATH, sess_opts, providers=providers)
-    print(f"Compiled in {{time.perf_counter() - t0:.1f}}s")
-    print(f"Active EP: {{session.get_providers()[0]}}")
+    active_ep = session.get_providers()[0]
+    print(f"  [OK] Running on: {{active_ep}}")
+    print(f"  Compile time: {{time.perf_counter() - t0:.1f}}s")
+    assert "MIGraphX" in active_ep, f"Expected MIGraphX EP but got {{active_ep}} — silent CPU fallback!"
     print()
+    return session
 
+
+def run_inference(session, warmup=3, measured=10):
+    import numpy as np
     inputs = {{}}
     for inp in session.get_inputs():
         shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
         dtype_map = {{"tensor(float)": np.float32, "tensor(float16)": np.float16,
                      "tensor(int64)": np.int64, "tensor(int32)": np.int32}}
         inputs[inp.name] = np.random.randn(*shape).astype(dtype_map.get(inp.type, np.float32))
-
     output_names = [o.name for o in session.get_outputs()]
-
-    for i in range(3):
+    try:
         session.run(output_names, inputs)
-    print("Warmup done. Benchmarking...")
-
+    except Exception:
+        print("  [INFO] Random inputs failed (index-based ops) — retrying with zeros")
+        for k in inputs:
+            inputs[k] = np.zeros_like(inputs[k])
+    print(f"Warmup ({{warmup}} iterations)...")
+    for _ in range(warmup):
+        session.run(output_names, inputs)
+    print("Warmup complete.")
+    print()
+    print(f"Benchmarking ({{measured}} iterations)...")
     latencies = []
-    for i in range(10):
+    for i in range(measured):
         t0 = time.perf_counter()
         session.run(output_names, inputs)
-        ms = (time.perf_counter() - t0) * 1000
-        latencies.append(ms)
-        print(f"  Run {{i+1:>2}}: {{ms:.2f}} ms")
-
+        elapsed = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed)
+        print(f"  Run {{i+1:>3}}: {{elapsed:>8.2f}} ms")
+    print()
+    print("=" * 60)
+    print("  RESULTS")
+    print("=" * 60)
     avg = sum(latencies) / len(latencies)
-    print(f"\\nMean: {{avg:.2f}} ms | FPS: {{1000/avg:.1f}}")
+    p50 = sorted(latencies)[len(latencies) // 2]
+    p95 = sorted(latencies)[int(len(latencies) * 0.95)]
+    print(f"  Mean   : {{avg:>10.2f}} ms")
+    print(f"  Min    : {{min(latencies):>10.2f}} ms")
+    print(f"  Max    : {{max(latencies):>10.2f}} ms")
+    print(f"  P50    : {{p50:>10.2f}} ms")
+    print(f"  P95    : {{p95:>10.2f}} ms")
+    print(f"  FPS    : {{1000.0/avg:>10.1f}}")
+    print()
+    print(f"  Model  : {{Path(MODEL_PATH).name}}")
+    print(f"  EP     : MIGraphXExecutionProvider (FP16)")
+    print(f"  Target : {gpu.name} ({gpu.arch}, {gpu.vram_mb}MB VRAM)")
+    print("=" * 60)
+    print()
 
 
 if __name__ == "__main__":
-    main()
+    print()
+    print("=" * 60)
+    print("  ISAT Auto-Generated Inference Script")
+    print(f"  Model: {{Path(MODEL_PATH).name}}")
+    print(f"  Target: {gpu.name} ({gpu.arch})")
+    print("=" * 60)
+    if not preflight_checks():
+        print("Fix the issues above and re-run.")
+        sys.exit(1)
+    session = create_session()
+    run_inference(session, warmup=3, measured=10)
 '''
 
 
@@ -493,6 +634,7 @@ def _nvidia_script(hw: HardwareProfile, gpu: DetectedGPU,
 """
 
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -503,21 +645,57 @@ MODEL_PATH = r"{model_path}"
 CACHE_DIR = "./trt_engine_cache"
 
 
-def main():
+def preflight_checks() -> bool:
+    print("=" * 60)
+    print("  ISAT Pre-flight System Check (NVIDIA)")
+    print("=" * 60)
+    print()
+    ok = True
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+                            "--format=csv,noheader"], capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            print(f"  [OK] GPU: {{r.stdout.strip()}}")
+        else:
+            print("  [WARNING] nvidia-smi failed")
+    except FileNotFoundError:
+        print("  [WARNING] nvidia-smi not found — NVIDIA driver may not be installed")
+        ok = False
+    model_mb = Path(MODEL_PATH).stat().st_size / (1024 * 1024) if Path(MODEL_PATH).exists() else 0
+    if model_mb > {gpu.vram_mb} and {gpu.vram_mb} > 0:
+        print(f"  [WARNING] Model ({{model_mb:.0f}} MB) > VRAM ({gpu.vram_mb} MB)")
+    try:
+        import onnxruntime as ort
+        providers = ort.get_available_providers()
+        print(f"  [OK] ORT {{ort.__version__}}: {{', '.join(providers)}}")
+        if "TensorrtExecutionProvider" in providers:
+            print("  [OK] TensorRT EP available")
+        elif "CUDAExecutionProvider" in providers:
+            print("  [OK] CUDA EP available (TensorRT not found — using CUDA)")
+        else:
+            print("  [WARNING] No NVIDIA EP found — will fall back to CPU")
+            ok = False
+    except ImportError:
+        print("  [FAIL] onnxruntime not installed")
+        ok = False
+    if not Path(MODEL_PATH).exists():
+        print(f"  [FAIL] Model not found: {{MODEL_PATH}}")
+        ok = False
+    else:
+        print(f"  [OK] Model found: {{model_mb:.1f}} MB")
+    print()
+    if ok:
+        print("  All checks passed.")
+    print("=" * 60)
+    print()
+    return ok
+
+
+def create_session():
     import onnxruntime as ort
-
-    print()
-    print("=" * 60)
-    print("  ISAT Inference — NVIDIA GPU")
-    print(f"  Model: {{Path(MODEL_PATH).name}}")
-    print(f"  GPU  : {gpu.name} ({gpu.arch}, {gpu.vram_mb}MB)")
-    print("=" * 60)
-    print()
-
     os.makedirs(CACHE_DIR, exist_ok=True)
-
     sess_opts = ort.SessionOptions()
-
+    sess_opts.log_severity_level = 3
     providers = [
         ("TensorrtExecutionProvider", {{
             "trt_fp16_enable": True,
@@ -527,43 +705,81 @@ def main():
         ("CUDAExecutionProvider", {{"device_id": 0}}),
         "CPUExecutionProvider",
     ]
-
     print("Loading model (TensorRT will compile an optimized engine)...")
     print("(First run builds the engine and caches it — subsequent runs are fast)")
     print()
     t0 = time.perf_counter()
     session = ort.InferenceSession(MODEL_PATH, sess_opts, providers=providers)
-    print(f"Ready in {{time.perf_counter() - t0:.1f}}s")
-    print(f"Active EP: {{session.get_providers()[0]}}")
+    active_ep = session.get_providers()[0]
+    print(f"  [OK] Running on: {{active_ep}}")
+    print(f"  Load time: {{time.perf_counter() - t0:.1f}}s")
+    if active_ep == "CPUExecutionProvider":
+        print("  [WARNING] Fell back to CPU! Check CUDA/TensorRT installation.")
     print()
+    return session
 
+
+def run_inference(session, warmup=3, measured=10):
+    import numpy as np
     inputs = {{}}
     for inp in session.get_inputs():
         shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
         dtype_map = {{"tensor(float)": np.float32, "tensor(float16)": np.float16,
                      "tensor(int64)": np.int64, "tensor(int32)": np.int32}}
         inputs[inp.name] = np.random.randn(*shape).astype(dtype_map.get(inp.type, np.float32))
-
     output_names = [o.name for o in session.get_outputs()]
-
-    for i in range(3):
+    try:
         session.run(output_names, inputs)
-    print("Warmup done. Benchmarking...")
-
+    except Exception:
+        print("  [INFO] Random inputs failed (index-based ops) — retrying with zeros")
+        for k in inputs:
+            inputs[k] = np.zeros_like(inputs[k])
+    print(f"Warmup ({{warmup}} iterations)...")
+    for _ in range(warmup):
+        session.run(output_names, inputs)
+    print("Warmup complete.")
+    print()
+    print(f"Benchmarking ({{measured}} iterations)...")
     latencies = []
-    for i in range(10):
+    for i in range(measured):
         t0 = time.perf_counter()
         session.run(output_names, inputs)
-        ms = (time.perf_counter() - t0) * 1000
-        latencies.append(ms)
-        print(f"  Run {{i+1:>2}}: {{ms:.2f}} ms")
-
+        elapsed = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed)
+        print(f"  Run {{i+1:>3}}: {{elapsed:>8.2f}} ms")
+    print()
+    print("=" * 60)
+    print("  RESULTS")
+    print("=" * 60)
     avg = sum(latencies) / len(latencies)
-    print(f"\\nMean: {{avg:.2f}} ms | FPS: {{1000/avg:.1f}}")
+    p50 = sorted(latencies)[len(latencies) // 2]
+    p95 = sorted(latencies)[int(len(latencies) * 0.95)]
+    print(f"  Mean   : {{avg:>10.2f}} ms")
+    print(f"  Min    : {{min(latencies):>10.2f}} ms")
+    print(f"  Max    : {{max(latencies):>10.2f}} ms")
+    print(f"  P50    : {{p50:>10.2f}} ms")
+    print(f"  P95    : {{p95:>10.2f}} ms")
+    print(f"  FPS    : {{1000.0/avg:>10.1f}}")
+    print()
+    print(f"  Model  : {{Path(MODEL_PATH).name}}")
+    print(f"  EP     : {{session.get_providers()[0]}}")
+    print(f"  Target : {gpu.name} ({gpu.arch}, {gpu.vram_mb}MB)")
+    print("=" * 60)
+    print()
 
 
 if __name__ == "__main__":
-    main()
+    print()
+    print("=" * 60)
+    print("  ISAT Auto-Generated Inference Script")
+    print(f"  Model: {{Path(MODEL_PATH).name}}")
+    print(f"  Target: {gpu.name} ({gpu.arch})")
+    print("=" * 60)
+    if not preflight_checks():
+        print("Fix the issues above and re-run.")
+        sys.exit(1)
+    session = create_session()
+    run_inference(session, warmup=3, measured=10)
 '''
 
 
@@ -575,6 +791,8 @@ def _intel_script(hw: HardwareProfile, gpu: DetectedGPU,
                   model_path: str, model_mb: float, fp_hash: str) -> str:
     model_name = _model_basename(model_path)
     is_igpu = gpu.gpu_type in ("igpu", "integrated")
+    gpu_label = "iGPU" if is_igpu else "dGPU"
+    device_type = "GPU.0" if is_igpu else "GPU"
 
     return f'''#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -582,7 +800,7 @@ def _intel_script(hw: HardwareProfile, gpu: DetectedGPU,
 {'=' * 76}
   ISAT Auto-Generated Inference Script
   Model : {Path(model_path).name}
-  Target: {gpu.name} (Intel {"iGPU" if is_igpu else "dGPU"}, {gpu.arch})
+  Target: {gpu.name} (Intel {gpu_label}, {gpu.arch})
 
   Generated by ISAT (Inference Stack Auto-Tuner) v{__version__}
   https://github.com/SID-Devu/isat-tuner
@@ -614,61 +832,122 @@ os.environ["OMP_NUM_THREADS"] = "{hw.cpu_cores}"
 MODEL_PATH = r"{model_path}"
 
 
-def main():
+def preflight_checks() -> bool:
+    print("=" * 60)
+    print("  ISAT Pre-flight System Check (Intel {gpu_label})")
+    print("=" * 60)
+    print()
+    ok = True
+    try:
+        import onnxruntime as ort
+        providers = ort.get_available_providers()
+        print(f"  [OK] ORT {{ort.__version__}}: {{', '.join(providers)}}")
+        if "OpenVINOExecutionProvider" in providers:
+            print("  [OK] OpenVINO EP available")
+        else:
+            print("  [WARNING] OpenVINO EP not found — will fall back to CPU")
+            ok = False
+    except ImportError:
+        print("  [FAIL] onnxruntime not installed")
+        ok = False
+    if not Path(MODEL_PATH).exists():
+        print(f"  [FAIL] Model not found: {{MODEL_PATH}}")
+        ok = False
+    else:
+        mb = Path(MODEL_PATH).stat().st_size / (1024 * 1024)
+        print(f"  [OK] Model found: {{mb:.1f}} MB")
+    print()
+    if ok:
+        print("  All checks passed.")
+    print("=" * 60)
+    print()
+    return ok
+
+
+def create_session():
     import onnxruntime as ort
-
-    print()
-    print("=" * 60)
-    print("  ISAT Inference — Intel {'iGPU' if is_igpu else 'dGPU'}")
-    print(f"  Model: {{Path(MODEL_PATH).name}}")
-    print(f"  Device: {gpu.name}")
-    print("=" * 60)
-    print()
-
     sess_opts = ort.SessionOptions()
-
+    sess_opts.log_severity_level = 3
     providers = [
         ("OpenVINOExecutionProvider", {{
-            "device_type": "{'GPU.0' if is_igpu else 'GPU'}",
+            "device_type": "{device_type}",
             "precision": "FP16",
         }}),
         "CPUExecutionProvider",
     ]
-
     print("Loading model with OpenVINO EP...")
     t0 = time.perf_counter()
     session = ort.InferenceSession(MODEL_PATH, sess_opts, providers=providers)
-    print(f"Ready in {{time.perf_counter() - t0:.1f}}s")
-    print(f"Active EP: {{session.get_providers()[0]}}")
+    active_ep = session.get_providers()[0]
+    print(f"  [OK] Running on: {{active_ep}}")
+    print(f"  Load time: {{time.perf_counter() - t0:.1f}}s")
+    if active_ep == "CPUExecutionProvider":
+        print("  [WARNING] Fell back to CPU! Check OpenVINO installation.")
     print()
+    return session
 
+
+def run_inference(session, warmup=3, measured=10):
+    import numpy as np
     inputs = {{}}
     for inp in session.get_inputs():
         shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
         dtype_map = {{"tensor(float)": np.float32, "tensor(float16)": np.float16,
                      "tensor(int64)": np.int64, "tensor(int32)": np.int32}}
         inputs[inp.name] = np.random.randn(*shape).astype(dtype_map.get(inp.type, np.float32))
-
     output_names = [o.name for o in session.get_outputs()]
-
-    for i in range(3):
+    try:
         session.run(output_names, inputs)
-    print("Warmup done. Benchmarking...")
-
+    except Exception:
+        print("  [INFO] Random inputs failed (index-based ops) — retrying with zeros")
+        for k in inputs:
+            inputs[k] = np.zeros_like(inputs[k])
+    print(f"Warmup ({{warmup}} iterations)...")
+    for _ in range(warmup):
+        session.run(output_names, inputs)
+    print("Warmup complete.")
+    print()
+    print(f"Benchmarking ({{measured}} iterations)...")
     latencies = []
-    for i in range(10):
+    for i in range(measured):
         t0 = time.perf_counter()
         session.run(output_names, inputs)
-        ms = (time.perf_counter() - t0) * 1000
-        latencies.append(ms)
-        print(f"  Run {{i+1:>2}}: {{ms:.2f}} ms")
-
+        elapsed = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed)
+        print(f"  Run {{i+1:>3}}: {{elapsed:>8.2f}} ms")
+    print()
+    print("=" * 60)
+    print("  RESULTS")
+    print("=" * 60)
     avg = sum(latencies) / len(latencies)
-    print(f"\\nMean: {{avg:.2f}} ms | FPS: {{1000/avg:.1f}}")
+    p50 = sorted(latencies)[len(latencies) // 2]
+    p95 = sorted(latencies)[int(len(latencies) * 0.95)]
+    print(f"  Mean   : {{avg:>10.2f}} ms")
+    print(f"  Min    : {{min(latencies):>10.2f}} ms")
+    print(f"  Max    : {{max(latencies):>10.2f}} ms")
+    print(f"  P50    : {{p50:>10.2f}} ms")
+    print(f"  P95    : {{p95:>10.2f}} ms")
+    print(f"  FPS    : {{1000.0/avg:>10.1f}}")
+    print()
+    print(f"  Model  : {{Path(MODEL_PATH).name}}")
+    print(f"  EP     : {{session.get_providers()[0]}}")
+    print(f"  Target : {gpu.name} (Intel {gpu_label})")
+    print("=" * 60)
+    print()
 
 
 if __name__ == "__main__":
-    main()
+    print()
+    print("=" * 60)
+    print("  ISAT Auto-Generated Inference Script")
+    print(f"  Model: {{Path(MODEL_PATH).name}}")
+    print(f"  Target: {gpu.name} (Intel {gpu_label})")
+    print("=" * 60)
+    if not preflight_checks():
+        print("Fix the issues above and re-run.")
+        sys.exit(1)
+    session = create_session()
+    run_inference(session, warmup=3, measured=10)
 '''
 
 
@@ -679,6 +958,7 @@ if __name__ == "__main__":
 def _apple_script(hw: HardwareProfile, gpu: DetectedGPU,
                   model_path: str, model_mb: float, fp_hash: str) -> str:
     model_name = _model_basename(model_path)
+    ram_gb = hw.system_ram_mb // 1024
 
     return f'''#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
@@ -686,7 +966,7 @@ def _apple_script(hw: HardwareProfile, gpu: DetectedGPU,
 {'=' * 76}
   ISAT Auto-Generated Inference Script
   Model : {Path(model_path).name}
-  Target: {gpu.name} (Apple Silicon, {hw.system_ram_mb // 1024}GB Unified Memory)
+  Target: {gpu.name} (Apple Silicon, {ram_gb}GB Unified Memory)
 
   Generated by ISAT (Inference Stack Auto-Tuner) v{__version__}
   https://github.com/SID-Devu/isat-tuner
@@ -715,58 +995,124 @@ import numpy as np
 MODEL_PATH = r"{model_path}"
 
 
-def main():
+def preflight_checks() -> bool:
+    print("=" * 60)
+    print("  ISAT Pre-flight System Check (Apple Silicon)")
+    print("=" * 60)
+    print()
+    ok = True
+    import platform
+    if platform.machine() in ("arm64", "aarch64"):
+        print(f"  [OK] Apple Silicon detected ({{platform.machine()}})")
+    else:
+        print(f"  [WARNING] Not Apple Silicon ({{platform.machine()}})")
+    try:
+        import onnxruntime as ort
+        providers = ort.get_available_providers()
+        print(f"  [OK] ORT {{ort.__version__}}: {{', '.join(providers)}}")
+        if "CoreMLExecutionProvider" in providers:
+            print("  [OK] CoreML EP available (GPU + Neural Engine)")
+        else:
+            print("  [WARNING] CoreML EP not found — will fall back to CPU")
+            ok = False
+    except ImportError:
+        print("  [FAIL] onnxruntime not installed")
+        ok = False
+    if not Path(MODEL_PATH).exists():
+        print(f"  [FAIL] Model not found: {{MODEL_PATH}}")
+        ok = False
+    else:
+        mb = Path(MODEL_PATH).stat().st_size / (1024 * 1024)
+        print(f"  [OK] Model found: {{mb:.1f}} MB")
+    print()
+    if ok:
+        print("  All checks passed.")
+    print("=" * 60)
+    print()
+    return ok
+
+
+def create_session():
     import onnxruntime as ort
-
-    print()
-    print("=" * 60)
-    print("  ISAT Inference — Apple Silicon")
-    print(f"  Model: {{Path(MODEL_PATH).name}}")
-    print(f"  Chip : {gpu.name}")
-    print("=" * 60)
-    print()
-
     sess_opts = ort.SessionOptions()
-
+    sess_opts.log_severity_level = 3
     providers = [
         ("CoreMLExecutionProvider", {{}}),
         "CPUExecutionProvider",
     ]
-
     print("Loading model with CoreML EP (GPU + Neural Engine)...")
     t0 = time.perf_counter()
     session = ort.InferenceSession(MODEL_PATH, sess_opts, providers=providers)
-    print(f"Ready in {{time.perf_counter() - t0:.1f}}s")
-    print(f"Active EP: {{session.get_providers()[0]}}")
+    active_ep = session.get_providers()[0]
+    print(f"  [OK] Running on: {{active_ep}}")
+    print(f"  Load time: {{time.perf_counter() - t0:.1f}}s")
+    if active_ep == "CPUExecutionProvider":
+        print("  [WARNING] Fell back to CPU! Check CoreML availability.")
     print()
+    return session
 
+
+def run_inference(session, warmup=3, measured=10):
+    import numpy as np
     inputs = {{}}
     for inp in session.get_inputs():
         shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
         dtype_map = {{"tensor(float)": np.float32, "tensor(float16)": np.float16,
                      "tensor(int64)": np.int64, "tensor(int32)": np.int32}}
         inputs[inp.name] = np.random.randn(*shape).astype(dtype_map.get(inp.type, np.float32))
-
     output_names = [o.name for o in session.get_outputs()]
-
-    for i in range(3):
+    try:
         session.run(output_names, inputs)
-    print("Warmup done. Benchmarking...")
-
+    except Exception:
+        print("  [INFO] Random inputs failed (index-based ops) — retrying with zeros")
+        for k in inputs:
+            inputs[k] = np.zeros_like(inputs[k])
+    print(f"Warmup ({{warmup}} iterations)...")
+    for _ in range(warmup):
+        session.run(output_names, inputs)
+    print("Warmup complete.")
+    print()
+    print(f"Benchmarking ({{measured}} iterations)...")
     latencies = []
-    for i in range(10):
+    for i in range(measured):
         t0 = time.perf_counter()
         session.run(output_names, inputs)
-        ms = (time.perf_counter() - t0) * 1000
-        latencies.append(ms)
-        print(f"  Run {{i+1:>2}}: {{ms:.2f}} ms")
-
+        elapsed = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed)
+        print(f"  Run {{i+1:>3}}: {{elapsed:>8.2f}} ms")
+    print()
+    print("=" * 60)
+    print("  RESULTS")
+    print("=" * 60)
     avg = sum(latencies) / len(latencies)
-    print(f"\\nMean: {{avg:.2f}} ms | FPS: {{1000/avg:.1f}}")
+    p50 = sorted(latencies)[len(latencies) // 2]
+    p95 = sorted(latencies)[int(len(latencies) * 0.95)]
+    print(f"  Mean   : {{avg:>10.2f}} ms")
+    print(f"  Min    : {{min(latencies):>10.2f}} ms")
+    print(f"  Max    : {{max(latencies):>10.2f}} ms")
+    print(f"  P50    : {{p50:>10.2f}} ms")
+    print(f"  P95    : {{p95:>10.2f}} ms")
+    print(f"  FPS    : {{1000.0/avg:>10.1f}}")
+    print()
+    print(f"  Model  : {{Path(MODEL_PATH).name}}")
+    print(f"  EP     : {{session.get_providers()[0]}}")
+    print(f"  Target : {gpu.name} ({ram_gb}GB Unified Memory)")
+    print("=" * 60)
+    print()
 
 
 if __name__ == "__main__":
-    main()
+    print()
+    print("=" * 60)
+    print("  ISAT Auto-Generated Inference Script")
+    print(f"  Model: {{Path(MODEL_PATH).name}}")
+    print(f"  Target: {gpu.name} (Apple Silicon)")
+    print("=" * 60)
+    if not preflight_checks():
+        print("Fix the issues above and re-run.")
+        sys.exit(1)
+    session = create_session()
+    run_inference(session, warmup=3, measured=10)
 '''
 
 
@@ -813,59 +1159,122 @@ import numpy as np
 MODEL_PATH = r"{model_path}"
 
 
-def main():
+def preflight_checks() -> bool:
+    print("=" * 60)
+    print("  ISAT Pre-flight System Check (Qualcomm NPU)")
+    print("=" * 60)
+    print()
+    ok = True
+    try:
+        import onnxruntime as ort
+        providers = ort.get_available_providers()
+        print(f"  [OK] ORT {{ort.__version__}}: {{', '.join(providers)}}")
+        if "QNNExecutionProvider" in providers:
+            print("  [OK] QNN EP available (Hexagon HTP)")
+        else:
+            print("  [WARNING] QNN EP not found — will fall back to CPU")
+            print("  Ensure Qualcomm QNN SDK is installed and libQnnHtp.so is accessible")
+            ok = False
+    except ImportError:
+        print("  [FAIL] onnxruntime not installed")
+        ok = False
+    if not Path(MODEL_PATH).exists():
+        print(f"  [FAIL] Model not found: {{MODEL_PATH}}")
+        ok = False
+    else:
+        mb = Path(MODEL_PATH).stat().st_size / (1024 * 1024)
+        print(f"  [OK] Model found: {{mb:.1f}} MB")
+    print()
+    if ok:
+        print("  All checks passed.")
+    print("=" * 60)
+    print()
+    return ok
+
+
+def create_session():
     import onnxruntime as ort
-
-    print()
-    print("=" * 60)
-    print("  ISAT Inference — Qualcomm NPU")
-    print(f"  Model: {{Path(MODEL_PATH).name}}")
-    print("=" * 60)
-    print()
-
     sess_opts = ort.SessionOptions()
-
+    sess_opts.log_severity_level = 3
     providers = [
         ("QNNExecutionProvider", {{
             "backend_path": "libQnnHtp.so",
         }}),
         "CPUExecutionProvider",
     ]
-
     print("Loading model with QNN EP (Hexagon HTP)...")
     t0 = time.perf_counter()
     session = ort.InferenceSession(MODEL_PATH, sess_opts, providers=providers)
-    print(f"Ready in {{time.perf_counter() - t0:.1f}}s")
-    print(f"Active EP: {{session.get_providers()[0]}}")
+    active_ep = session.get_providers()[0]
+    print(f"  [OK] Running on: {{active_ep}}")
+    print(f"  Load time: {{time.perf_counter() - t0:.1f}}s")
+    if active_ep == "CPUExecutionProvider":
+        print("  [WARNING] Fell back to CPU! Check QNN SDK installation.")
     print()
+    return session
 
+
+def run_inference(session, warmup=3, measured=10):
+    import numpy as np
     inputs = {{}}
     for inp in session.get_inputs():
         shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
         dtype_map = {{"tensor(float)": np.float32, "tensor(float16)": np.float16,
                      "tensor(int64)": np.int64, "tensor(int32)": np.int32}}
         inputs[inp.name] = np.random.randn(*shape).astype(dtype_map.get(inp.type, np.float32))
-
     output_names = [o.name for o in session.get_outputs()]
-
-    for i in range(3):
+    try:
         session.run(output_names, inputs)
-    print("Warmup done. Benchmarking...")
-
+    except Exception:
+        print("  [INFO] Random inputs failed (index-based ops) — retrying with zeros")
+        for k in inputs:
+            inputs[k] = np.zeros_like(inputs[k])
+    print(f"Warmup ({{warmup}} iterations)...")
+    for _ in range(warmup):
+        session.run(output_names, inputs)
+    print("Warmup complete.")
+    print()
+    print(f"Benchmarking ({{measured}} iterations)...")
     latencies = []
-    for i in range(10):
+    for i in range(measured):
         t0 = time.perf_counter()
         session.run(output_names, inputs)
-        ms = (time.perf_counter() - t0) * 1000
-        latencies.append(ms)
-        print(f"  Run {{i+1:>2}}: {{ms:.2f}} ms")
-
+        elapsed = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed)
+        print(f"  Run {{i+1:>3}}: {{elapsed:>8.2f}} ms")
+    print()
+    print("=" * 60)
+    print("  RESULTS")
+    print("=" * 60)
     avg = sum(latencies) / len(latencies)
-    print(f"\\nMean: {{avg:.2f}} ms | FPS: {{1000/avg:.1f}}")
+    p50 = sorted(latencies)[len(latencies) // 2]
+    p95 = sorted(latencies)[int(len(latencies) * 0.95)]
+    print(f"  Mean   : {{avg:>10.2f}} ms")
+    print(f"  Min    : {{min(latencies):>10.2f}} ms")
+    print(f"  Max    : {{max(latencies):>10.2f}} ms")
+    print(f"  P50    : {{p50:>10.2f}} ms")
+    print(f"  P95    : {{p95:>10.2f}} ms")
+    print(f"  FPS    : {{1000.0/avg:>10.1f}}")
+    print()
+    print(f"  Model  : {{Path(MODEL_PATH).name}}")
+    print(f"  EP     : {{session.get_providers()[0]}}")
+    print(f"  Target : {gpu.name} (Hexagon NPU)")
+    print("=" * 60)
+    print()
 
 
 if __name__ == "__main__":
-    main()
+    print()
+    print("=" * 60)
+    print("  ISAT Auto-Generated Inference Script")
+    print(f"  Model: {{Path(MODEL_PATH).name}}")
+    print(f"  Target: {gpu.name} (Qualcomm NPU)")
+    print("=" * 60)
+    if not preflight_checks():
+        print("Fix the issues above and re-run.")
+        sys.exit(1)
+    session = create_session()
+    run_inference(session, warmup=3, measured=10)
 '''
 
 
@@ -915,54 +1324,108 @@ os.environ["OMP_NUM_THREADS"] = "{hw.cpu_cores}"
 MODEL_PATH = r"{model_path}"
 
 
-def main():
+def preflight_checks() -> bool:
+    print("=" * 60)
+    print("  ISAT Pre-flight System Check (CPU)")
+    print("=" * 60)
+    print()
+    ok = True
+    try:
+        import onnxruntime as ort
+        print(f"  [OK] ORT {{ort.__version__}}: {{', '.join(ort.get_available_providers())}}")
+    except ImportError:
+        print("  [FAIL] onnxruntime not installed")
+        ok = False
+    if not Path(MODEL_PATH).exists():
+        print(f"  [FAIL] Model not found: {{MODEL_PATH}}")
+        ok = False
+    else:
+        mb = Path(MODEL_PATH).stat().st_size / (1024 * 1024)
+        print(f"  [OK] Model found: {{mb:.1f}} MB")
+    print(f"  [OK] CPU cores: {{os.cpu_count()}}, OMP_NUM_THREADS={hw.cpu_cores}")
+    print()
+    if ok:
+        print("  All checks passed.")
+    print("=" * 60)
+    print()
+    return ok
+
+
+def create_session():
     import onnxruntime as ort
-
-    print()
-    print("=" * 60)
-    print("  ISAT Inference — CPU")
-    print(f"  Model: {{Path(MODEL_PATH).name}}")
-    print(f"  CPU  : {hw.cpu_name} ({{os.cpu_count()}} cores)")
-    print("=" * 60)
-    print()
-
     sess_opts = ort.SessionOptions()
     sess_opts.intra_op_num_threads = {hw.cpu_cores}
     sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-
-    print("Loading model on CPU...")
+    sess_opts.log_severity_level = 3
+    print("Loading model on CPU (graph optimizations enabled)...")
     t0 = time.perf_counter()
     session = ort.InferenceSession(MODEL_PATH, sess_opts, providers=["CPUExecutionProvider"])
-    print(f"Ready in {{time.perf_counter() - t0:.1f}}s")
+    print(f"  [OK] Ready in {{time.perf_counter() - t0:.1f}}s")
     print()
+    return session
 
+
+def run_inference(session, warmup=3, measured=10):
+    import numpy as np
     inputs = {{}}
     for inp in session.get_inputs():
         shape = [d if isinstance(d, int) and d > 0 else 1 for d in inp.shape]
         dtype_map = {{"tensor(float)": np.float32, "tensor(float16)": np.float16,
                      "tensor(int64)": np.int64, "tensor(int32)": np.int32}}
         inputs[inp.name] = np.random.randn(*shape).astype(dtype_map.get(inp.type, np.float32))
-
     output_names = [o.name for o in session.get_outputs()]
-
-    for i in range(3):
+    try:
         session.run(output_names, inputs)
-    print("Warmup done. Benchmarking...")
-
+    except Exception:
+        print("  [INFO] Random inputs failed (index-based ops) — retrying with zeros")
+        for k in inputs:
+            inputs[k] = np.zeros_like(inputs[k])
+    print(f"Warmup ({{warmup}} iterations)...")
+    for _ in range(warmup):
+        session.run(output_names, inputs)
+    print("Warmup complete.")
+    print()
+    print(f"Benchmarking ({{measured}} iterations)...")
     latencies = []
-    for i in range(10):
+    for i in range(measured):
         t0 = time.perf_counter()
         session.run(output_names, inputs)
-        ms = (time.perf_counter() - t0) * 1000
-        latencies.append(ms)
-        print(f"  Run {{i+1:>2}}: {{ms:.2f}} ms")
-
+        elapsed = (time.perf_counter() - t0) * 1000
+        latencies.append(elapsed)
+        print(f"  Run {{i+1:>3}}: {{elapsed:>8.2f}} ms")
+    print()
+    print("=" * 60)
+    print("  RESULTS")
+    print("=" * 60)
     avg = sum(latencies) / len(latencies)
-    print(f"\\nMean: {{avg:.2f}} ms | FPS: {{1000/avg:.1f}}")
+    p50 = sorted(latencies)[len(latencies) // 2]
+    p95 = sorted(latencies)[int(len(latencies) * 0.95)]
+    print(f"  Mean   : {{avg:>10.2f}} ms")
+    print(f"  Min    : {{min(latencies):>10.2f}} ms")
+    print(f"  Max    : {{max(latencies):>10.2f}} ms")
+    print(f"  P50    : {{p50:>10.2f}} ms")
+    print(f"  P95    : {{p95:>10.2f}} ms")
+    print(f"  FPS    : {{1000.0/avg:>10.1f}}")
+    print()
+    print(f"  Model  : {{Path(MODEL_PATH).name}}")
+    print(f"  EP     : CPUExecutionProvider")
+    print(f"  Target : {hw.cpu_name} ({hw.cpu_cores} cores)")
+    print("=" * 60)
+    print()
 
 
 if __name__ == "__main__":
-    main()
+    print()
+    print("=" * 60)
+    print("  ISAT Auto-Generated Inference Script")
+    print(f"  Model: {{Path(MODEL_PATH).name}}")
+    print(f"  Target: CPU ({hw.cpu_cores} cores)")
+    print("=" * 60)
+    if not preflight_checks():
+        print("Fix the issues above and re-run.")
+        sys.exit(1)
+    session = create_session()
+    run_inference(session, warmup=3, measured=10)
 '''
 
 
@@ -976,8 +1439,20 @@ def generate_script(hw: HardwareProfile, model_path: str) -> str:
     p = Path(model_path)
     if p.exists():
         model_mb = p.stat().st_size / (1024 * 1024)
-        for ed in p.parent.glob("*.onnx.data"):
-            model_mb += ed.stat().st_size / (1024 * 1024)
+        seen = {p.resolve()}
+        for suffix in [".onnx_data", "_data"]:
+            dp = p.parent / (p.stem + suffix)
+            if dp.exists() and dp.resolve() not in seen:
+                seen.add(dp.resolve())
+                if dp.is_dir():
+                    model_mb += sum(f.stat().st_size for f in dp.iterdir()) / (1024 * 1024)
+                else:
+                    model_mb += dp.stat().st_size / (1024 * 1024)
+        for pat in ["*.onnx_data", "*.onnx.data", "*.data"]:
+            for ed in p.parent.glob(pat):
+                if ed.resolve() not in seen and ed.is_file():
+                    seen.add(ed.resolve())
+                    model_mb += ed.stat().st_size / (1024 * 1024)
 
     fp_hash = _fingerprint(hw, model_path)
     gpu = hw.primary_gpu

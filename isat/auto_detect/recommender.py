@@ -55,14 +55,22 @@ def _model_size_mb(model_path: str) -> float:
     if not p.exists():
         return 0.0
     total = p.stat().st_size
-    data_dir = p.parent / (p.stem + ".onnx_data")
-    if data_dir.exists():
-        total += sum(f.stat().st_size for f in data_dir.iterdir())
-    ext_data = p.parent / (p.stem + "_data")
-    if ext_data.exists() and ext_data.is_dir():
-        total += sum(f.stat().st_size for f in ext_data.iterdir())
-    for ed in p.parent.glob("*.onnx.data"):
-        total += ed.stat().st_size
+    seen = {p.resolve()}
+    # External data can be a directory OR a single file
+    for suffix in [".onnx_data", "_data"]:
+        data_path = p.parent / (p.stem + suffix)
+        if data_path.exists() and data_path.resolve() not in seen:
+            seen.add(data_path.resolve())
+            if data_path.is_dir():
+                total += sum(f.stat().st_size for f in data_path.iterdir())
+            else:
+                total += data_path.stat().st_size
+    # Also scan for ANY *.onnx_data or *.onnx.data or *.data in same dir
+    for pat in ["*.onnx_data", "*.onnx.data", "*.data"]:
+        for ed in p.parent.glob(pat):
+            if ed.resolve() not in seen and ed.is_file():
+                seen.add(ed.resolve())
+                total += ed.stat().st_size
     return total / (1024 * 1024)
 
 

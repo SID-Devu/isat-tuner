@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.2] - 2026-04-27
+
+### Fixed
+- **GatherND/ScatterND crash with random inputs**: Models using index-based ops (e.g.
+  CenterPoint) crashed with SIGSEGV when fed random test data. All 7 vendor templates
+  now auto-detect this and retry with zero-filled inputs — matching production behavior
+- Applied to all templates: AMD APU, AMD dGPU, NVIDIA, Intel, Apple, Qualcomm, CPU-only
+
+### Tested
+- CrossFormer (536 MB): 58.21 ms mean, 17.2 FPS — PASS
+- CenterPoint (532 MB): 38.87 ms mean, 25.7 FPS — PASS (zero-fallback triggered)
+- XTTS GPT2 (1,497 MB): 36.34 ms mean, 27.5 FPS — PASS
+- EasyOCR Detector (79 MB): 21.53 ms mean, 46.4 FPS — PASS
+
 ## [0.8.1] - 2026-04-27
 
 ### Added

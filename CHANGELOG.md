@@ -74,7 +74,7 @@ Linux Baremetal:     HIP → HSA → amdgpu → GPU
   or SoC — works on any OS (Linux, macOS, Windows)
 - **Inference Recommendations**: For each detected hardware, generates copy-paste-ready
   Python code, environment variables, install commands, and setup steps to run your model
-- **AMD APU-specific guidance**: Based on the R1/R2 report (23 models on Strix Halo),
+- **AMD APU-specific guidance**: Tuned on 23 models across AMD Strix Halo APU —
   recommends HSA_XNACK, MIGraphX compile flags, swap sizing, kernel boot params,
   and subprocess isolation for large models
 - **NVIDIA support**: TensorRT EP + CUDA EP recipes with engine caching, FP16 config

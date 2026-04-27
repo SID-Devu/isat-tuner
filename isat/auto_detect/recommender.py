@@ -4,7 +4,7 @@ Given a HardwareProfile + optional model info, generates copy-paste-ready
 setup commands and runtime configuration for ANY vendor's hardware.
 
 Knowledge base sourced from:
-  - AMD Strix Halo R1/R2 report (23 models on gfx1151 APU)
+  - AMD APU tuning (23 models on gfx1151, MIGraphX + FP16 + HSA_XNACK)
   - NVIDIA best practices for TensorRT / CUDA EP
   - Intel OpenVINO optimization guide
   - Apple CoreML / Metal Performance Shaders docs
@@ -154,7 +154,7 @@ print(f"Running on: {{active_ep}}")
         session_options={"graph_optimization_level": "ORT_DISABLE_ALL"},
         env_vars=env,
         install_cmd="pip install onnxruntime-migraphx" if not is_apu else
-                    "# Custom ORT build required for APU — see R1/R2 report\npip install onnxruntime-migraphx",
+                    "# Custom ORT build required for APU — see ISAT docs\npip install onnxruntime-migraphx",
         setup_steps=setup,
         python_code=python_code,
         warnings=warnings,

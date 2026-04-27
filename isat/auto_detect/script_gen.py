@@ -125,7 +125,7 @@ from pathlib import Path
 # ============================================================================
 #  ENVIRONMENT CONFIGURATION
 #  These MUST be set BEFORE importing onnxruntime.
-#  Matches the production settings from inference.py (R1/R2 report).
+#  Optimized for AMD APU inference with MIGraphX EP.
 # ============================================================================
 
 {env_block}

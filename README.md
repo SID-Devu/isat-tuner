@@ -7,12 +7,17 @@
 [![GitHub stars](https://img.shields.io/github/stars/SID-Devu/isat-tuner.svg)](https://github.com/SID-Devu/isat-tuner)
 [![GitHub release](https://img.shields.io/github/v/release/SID-Devu/isat-tuner)](https://github.com/SID-Devu/isat-tuner/releases)
 
-> **One command to detect your hardware, recommend the optimal setup, and auto-tune any ONNX model -- on any GPU from any vendor.**
+> **One command to convert any model to ONNX, detect your hardware, and auto-tune inference -- on any GPU from any vendor.**
 
-ISAT is a production-grade CLI toolkit for ONNX inference optimization. It auto-detects your hardware (AMD, NVIDIA, Intel, Apple, Qualcomm), classifies it (iGPU/dGPU/APU/SoC), and generates copy-paste-ready inference configurations. Then it jointly searches across memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- benchmarking each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
+ISAT is a production-grade CLI toolkit for ONNX inference optimization. It converts models from any framework (PyTorch, TensorFlow, JAX, HuggingFace, TFLite, SafeTensors) to ONNX, auto-detects your hardware (AMD, NVIDIA, Intel, Apple, Qualcomm), classifies it (iGPU/dGPU/APU/SoC), and generates copy-paste-ready inference configurations with runnable Python scripts. Then it jointly searches across memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- benchmarking each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
 
 ```bash
 pip install isat-tuner
+
+# Convert any model to ONNX + auto-detect hardware + generate inference script:
+isat onnx google/vit-base-patch16-224
+isat onnx facebook/opt-1.3b
+isat onnx model.pt --input-shape 1,3,224,224
 
 # Detect your hardware and get instant recommendations:
 isat tune
@@ -51,7 +56,12 @@ A single wrong choice can leave **40%+ performance on the table**. With 6 dimens
 
 ---
 
-## All 55 Commands
+## All 56 Commands
+
+### Model Conversion
+| Command | What it does |
+|---------|-------------|
+| `isat onnx` | Convert any model (PyTorch, TF, JAX, HuggingFace, TFLite, SafeTensors) to ONNX + auto-tune |
 
 ### Auto-Tuning & Search
 | Command | What it does |
@@ -142,6 +152,31 @@ A single wrong choice can leave **40%+ performance on the table**. With 6 dimens
 
 ---
 
+## Supported Conversion Formats (`isat onnx`)
+
+| Source Format | Extensions / IDs | Conversion Backend |
+|---------------|-----------------|-------------------|
+| **HuggingFace** | `org/model-name`, `hf://...` | `optimum.exporters.onnx` (primary), `torch.onnx.export` (fallback) |
+| **PyTorch** | `.pt`, `.pth`, `.bin` | `torch.onnx.export` |
+| **TensorFlow** | `.pb`, `SavedModel/` dirs | `tf2onnx` |
+| **TFLite** | `.tflite` | `tflite2onnx` / `tf2onnx` |
+| **JAX** | `.jax`, `.msgpack` | `jax2onnx` / `jax2tf` + `tf2onnx` |
+| **SafeTensors** | `.safetensors` | `safetensors` + `torch.onnx.export` |
+| **ONNX** | `.onnx` | Passthrough (optional `onnxsim` simplification) |
+
+### Validated Models
+
+| Model | Type | Params | Status |
+|-------|------|--------|--------|
+| `google/vit-base-patch16-224` | Vision Transformer | 86.6M | PASS |
+| `openai/clip-vit-base-patch32` | Multimodal (CLIP) | 151.3M | PASS |
+| `facebook/detr-resnet-50` | Object Detection | 41.6M | PASS |
+| `Salesforce/blip-image-captioning-base` | Image Captioning | 196.2M | PASS |
+| `distilgpt2` | LLM (small) | 81.9M | PASS |
+| `facebook/opt-1.3b` | LLM (1.3B) | 1,315.7M | PASS |
+
+---
+
 ## Installation
 
 ```bash
@@ -153,6 +188,12 @@ pip install git+https://github.com/SID-Devu/isat-tuner.git
 
 # With all optional features
 pip install "isat-tuner[all]"
+
+# Model conversion (HuggingFace, PyTorch, TensorFlow)
+pip install "isat-tuner[convert]"       # All conversion backends
+pip install "isat-tuner[convert-hf]"    # HuggingFace only (optimum)
+pip install "isat-tuner[convert-pt]"    # PyTorch only
+pip install "isat-tuner[convert-tf]"    # TensorFlow only
 
 # Platform-specific
 pip install "isat-tuner[rocm]"      # ROCm GPU support
@@ -169,6 +210,30 @@ cd isat && pip install -e ".[dev,all]"
 
 ## Quick Start
 
+### Convert Any Model to ONNX
+```bash
+# HuggingFace models (auto-detects architecture)
+isat onnx google/vit-base-patch16-224               # Vision Transformer
+isat onnx openai/clip-vit-base-patch32               # Multimodal (CLIP)
+isat onnx facebook/detr-resnet-50                    # Object Detection
+isat onnx Salesforce/blip-image-captioning-base      # Image Captioning
+isat onnx distilgpt2                                 # LLM (small)
+isat onnx facebook/opt-1.3b                          # LLM (1.3B params)
+
+# Local models
+isat onnx model.pt --input-shape 1,3,224,224         # PyTorch
+isat onnx saved_model/                               # TensorFlow SavedModel
+isat onnx model.tflite                               # TFLite
+isat onnx weights.safetensors --input-shape 1,3,224,224  # SafeTensors
+
+# Convert only (skip auto-tune)
+isat onnx facebook/opt-1.3b --no-tune
+
+# Simplify ONNX graph after conversion
+isat onnx model.pt --simplify --input-shape 1,3,224,224
+```
+
+### Auto-Tune & Benchmark
 ```bash
 # One-command auto-tune
 isat tune model.onnx --warmup 3 --runs 5 --cooldown 60
@@ -180,6 +245,12 @@ isat tune model.onnx --profile cloud
 # Bayesian optimization (smarter than grid search)
 isat tune model.onnx --bayesian --max-configs 20
 
+# Hardware-only detection (no model needed)
+isat tune
+```
+
+### Analyze & Optimize
+```bash
 # Inspect model
 isat inspect model.onnx
 
@@ -203,7 +274,10 @@ isat fusion model.onnx
 
 # Generate C++ inference code
 isat codegen model.onnx --output-dir cpp_build/
+```
 
+### Deploy & Monitor
+```bash
 # Canary deployment (safe model rollout)
 isat canary baseline.onnx candidate.onnx
 
@@ -327,19 +401,33 @@ docker run --device /dev/kfd --device /dev/dri --group-add video \
 ## Using as a Library
 
 ```python
+from isat.converter.engine import convert, detect_format
+from isat.auto_detect.detector import detect_hardware
+from isat.auto_detect.recommender import generate_recommendations, format_report
+from isat.auto_detect.script_gen import save_script
 from isat.fingerprint import fingerprint_hardware, fingerprint_model
 from isat.search import SearchEngine
-from isat.benchmark import BenchmarkRunner
-from isat.analysis import ParetoFrontier
 from isat.pruning.pruner import ModelPruner
 from isat.fusion.analyzer import FusionAnalyzer
 from isat.guard.validator import InputGuard
 from isat.inference_cache.cache import InferenceCache
 
+# Convert any model to ONNX
+result = convert("google/vit-base-patch16-224", output_dir="./output")
+print(result.onnx_path, result.size_mb)
+
+# Auto-detect hardware + generate recommendations
+hw = detect_hardware()
+report = generate_recommendations(hw, result.onnx_path)
+print(format_report(report))
+
+# Generate runnable inference script
+script_path = save_script(hw, result.onnx_path, "./output")
+
 # Auto-tune
-hw = fingerprint_hardware()
-model = fingerprint_model("model.onnx")
-engine = SearchEngine(hw, model, warmup=3, runs=5, cooldown=60)
+hw_fp = fingerprint_hardware()
+model_fp = fingerprint_model("model.onnx")
+engine = SearchEngine(hw_fp, model_fp, warmup=3, runs=5, cooldown=60)
 candidates = engine.generate_candidates()
 
 # Prune a model
@@ -374,7 +462,14 @@ echo $?  # 0 = pass, 1 = fail
 
 ```
 isat/
-├── cli.py                 # 55 subcommands
+├── cli.py                 # 56 subcommands
+├── converter/             # Universal model-to-ONNX conversion engine
+│   ├── engine.py          #   Format detection + dispatch
+│   └── backends.py        #   HuggingFace, PyTorch, TF, JAX, TFLite, SafeTensors
+├── auto_detect/           # Hardware auto-detection + inference recommendations
+│   ├── detector.py        #   Cross-platform GPU/CPU detection
+│   ├── recommender.py     #   Vendor-specific recipe generation
+│   └── script_gen.py      #   Runnable Python inference script generator
 ├── fingerprint/           # Hardware + model fingerprinting
 ├── search/                # 7-dimension search engine + Bayesian optimization
 ├── benchmark/             # Runner, stats, thermal monitoring, multi-GPU
@@ -445,7 +540,11 @@ isat/
 - `onnxruntime` (CPU), `onnxruntime-rocm` (ROCm), or `onnxruntime-gpu` (CUDA)
 - `onnx`, `numpy`
 
-Optional: `scipy`, `fastapi`, `uvicorn`, `onnxsim`, `prometheus-client`, `pyyaml`, `jinja2`
+Optional:
+- **Conversion**: `optimum[exporters]`, `torch`, `tensorflow`, `tf2onnx`, `safetensors`, `onnxsim`
+- **Server**: `fastapi`, `uvicorn`
+- **Optimization**: `scipy`, `onnxsim`
+- **Monitoring**: `prometheus-client`, `pyyaml`, `jinja2`
 
 ---
 
@@ -453,6 +552,8 @@ Optional: `scipy`, `fastapi`, `uvicorn`, `onnxsim`, `prometheus-client`, `pyyaml
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.9.1 | May 2026 | Universal model converter (`isat onnx`), 6-model E2E validation, PyTorch 2.9+ compat, multi-modal export (56 commands) |
+| v0.8.x | Apr 2026 | Auto-detect hardware, generate inference scripts, Windows DirectML + MIGraphX via WinML, cross-platform GPU detection |
 | v0.7.x | Apr 2026 | Pruning, distillation, fusion analysis, LLM bench, compiler comparison, replay, drift monitor, codegen (55 commands) |
 | v0.6.0 | Apr 2026 | Tracing, canary deploy, alerts, graph surgery, caching, input guard, ensemble, GPU frag (45 commands) |
 | v0.5.0 | Apr 2026 | Regression detector, security scanner, compat matrix, thermal monitor, quant sensitivity, pipeline optimizer, HW recommender, model registry (38 commands) |
@@ -470,7 +571,7 @@ Optional: `scipy`, `fastapi`, `uvicorn`, `onnxsim`, `prometheus-client`, `pyyaml
   author = {Sudheer Ibrahim Daniel Devu},
   title = {ISAT: Inference Stack Auto-Tuner},
   year = {2026},
-  version = {0.7.2},
+  version = {0.9.1},
   url = {https://github.com/SID-Devu/isat-tuner},
   license = {Apache-2.0}
 }

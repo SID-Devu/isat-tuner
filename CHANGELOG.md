@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.10.0] - 2026-05-01
+
+### Added -- 10 New Modules (66 Total Commands)
+- **`isat quantize`**: Advanced quantization with INT4 (MatMulNBits), INT8 (static QDQ),
+  FP16, mixed-precision, and SmoothQuant. Includes sensitivity analysis and auto-method selection.
+- **`isat stream`**: Streaming token-by-token LLM inference with KV cache management,
+  nucleus sampling (top-k/top-p), and benchmark mode (TTFT, ITL, TPS metrics).
+- **`isat shard`**: Split large models into N shards for multi-GPU / memory-constrained inference.
+  Strategies: balanced, layer-boundary, auto. Includes ShardedRunner for pipeline-parallel execution.
+- **`isat merge`**: Merge/compose multiple ONNX models via chaining (sequential) or
+  parallel (concat/mean/max/sum aggregation). Graph-level merge with node renaming and opset reconciliation.
+- **`isat explain`**: Model explainability via perturbation-based feature importance,
+  gradient attribution (finite differences), sensitivity mapping, and layer activation extraction.
+- **`isat benchmark-suite`**: Comprehensive benchmark suite: latency (P50/P95/P99 across batch sizes),
+  sustained throughput, memory profiling (peak RSS), and scalability analysis.
+- **`isat encrypt`**: Model IP protection: AES-256-GCM encryption, XOR obfuscation,
+  LSB watermark fingerprinting in float32 mantissa, and expiry date embedding.
+- **`isat safety`**: Regex-based safety guardrails: PII detection (email/phone/SSN/credit card),
+  toxicity filtering, jailbreak pattern detection, confidence thresholds, and output format validation.
+- **`isat cloud-deploy`**: One-command cloud deployment artifact generation: Dockerfile,
+  Kubernetes manifests (Deployment + Service + HPA), SageMaker handler, Azure ML score.py,
+  GCP Vertex AI config, and standalone FastAPI inference server.
+- **`isat test`**: Automated model testing: determinism, numerical stability, edge cases,
+  input validation, cross-provider comparison, latency consistency, memory leak detection,
+  and golden file regression. JUnit XML output for CI integration.
+
+### Changed
+- CLI expanded from 56 to 66 commands
+- Updated project metadata and keywords for new capabilities
+- Version bumped to 0.10.0
+
 ## [0.9.1] - 2026-05-01
 
 ### Added

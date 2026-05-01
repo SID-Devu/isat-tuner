@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isat-tuner"
-version = "0.9.2"
-description = "ISAT: Inference Stack Auto-Tuner — 56-command CLI to convert any model to ONNX, auto-detect hardware, generate inference scripts, tune, profile, prune, deploy, and monitor on any GPU."
+version = "0.10.0"
+description = "ISAT: Inference Stack Auto-Tuner — 66-command CLI to convert, quantize, shard, merge, encrypt, test, stream, explain, benchmark, and deploy any ONNX model on any GPU."
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
@@ -23,6 +23,9 @@ keywords = [
     "pruning", "quantization", "distillation", "profiling", "deployment",
     "canary", "ensemble", "monitoring", "drift-detection", "llm",
     "transformer", "edge-deployment", "codegen", "inference-serving",
+    "model-sharding", "model-merging", "model-encryption", "model-safety",
+    "model-testing", "streaming-inference", "explainability", "cloud-deploy",
+    "int4-quantization", "smoothquant", "kv-cache", "benchmark-suite",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -61,6 +64,10 @@ convert = ["optimum[exporters]", "tf2onnx", "onnxsim", "safetensors"]
 convert-hf = ["optimum[exporters]"]
 convert-tf = ["tf2onnx", "tensorflow"]
 convert-pt = ["torch"]
+stream = ["transformers"]
+encrypt = ["cryptography"]
+safety = []
+cloud-deploy = ["fastapi>=0.100.0", "uvicorn[standard]>=0.20.0"]
 server = ["fastapi>=0.100.0", "uvicorn[standard]>=0.20.0", "pydantic>=2.0"]
 metrics = ["prometheus-client>=0.20.0"]
 bayesian = ["scipy>=1.10.0"]
@@ -73,6 +80,8 @@ all = [
     "scipy>=1.10.0",
     "pyyaml>=6.0",
     "jinja2",
+    "cryptography",
+    "transformers",
 ]
 dev = [
     "pytest>=7.0",

@@ -7,9 +7,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/SID-Devu/isat-tuner.svg)](https://github.com/SID-Devu/isat-tuner)
 [![GitHub release](https://img.shields.io/github/v/release/SID-Devu/isat-tuner)](https://github.com/SID-Devu/isat-tuner/releases)
 
-> **One command to convert any model to ONNX, detect your hardware, and auto-tune inference -- on any GPU from any vendor.**
+> **66-command CLI to convert, quantize, shard, merge, encrypt, test, stream, explain, benchmark, and deploy any ONNX model -- on any GPU from any vendor.**
 
-ISAT is a production-grade CLI toolkit for ONNX inference optimization. It converts models from any framework (PyTorch, TensorFlow, JAX, HuggingFace, TFLite, SafeTensors) to ONNX, auto-detects your hardware (AMD, NVIDIA, Intel, Apple, Qualcomm), classifies it (iGPU/dGPU/APU/SoC), and generates copy-paste-ready inference configurations with runnable Python scripts. Then it jointly searches across memory strategy, kernel backend, precision, graph transforms, batch size, and thread tuning -- benchmarking each combination with thermal-aware cooldowns, statistical rigor, and Bayesian optimization.
+ISAT is a production-grade CLI toolkit for the full ONNX inference lifecycle. It converts models from any framework (PyTorch, TensorFlow, JAX, HuggingFace, TFLite, SafeTensors) to ONNX, auto-detects your hardware (AMD, NVIDIA, Intel, Apple, Qualcomm), and generates optimized inference configurations. Beyond conversion and tuning, ISAT provides advanced quantization (INT4/INT8/FP16/SmoothQuant), model sharding for multi-GPU, streaming LLM inference with KV cache, model merging and composition, explainability tools, comprehensive benchmarking, AES-256 model encryption, safety guardrails (PII/toxicity/jailbreak detection), one-command cloud deployment (Docker/K8s/SageMaker/Azure/GCP), and automated model testing with JUnit CI integration.
 
 ```bash
 pip install isat-tuner
@@ -56,12 +56,54 @@ A single wrong choice can leave **40%+ performance on the table**. With 6 dimens
 
 ---
 
-## All 56 Commands
+## All 66 Commands
 
 ### Model Conversion
 | Command | What it does |
 |---------|-------------|
 | `isat onnx` | Convert any model (PyTorch, TF, JAX, HuggingFace, TFLite, SafeTensors) to ONNX + auto-tune |
+
+### Quantization & Compression (NEW in v0.10.0)
+| Command | What it does |
+|---------|-------------|
+| `isat quantize` | Advanced quantization: INT4 (MatMulNBits), INT8 (static QDQ), FP16, mixed-precision, SmoothQuant |
+
+### Streaming Inference (NEW in v0.10.0)
+| Command | What it does |
+|---------|-------------|
+| `isat stream` | Token-by-token LLM inference with KV cache, nucleus sampling (top-k/top-p), benchmark mode |
+
+### Model Sharding & Merging (NEW in v0.10.0)
+| Command | What it does |
+|---------|-------------|
+| `isat shard` | Split large models into N shards for multi-GPU / memory-constrained inference |
+| `isat merge` | Merge/compose multiple ONNX models (chain or parallel with concat/mean/max/sum) |
+
+### Explainability (NEW in v0.10.0)
+| Command | What it does |
+|---------|-------------|
+| `isat explain` | Feature importance, gradient attribution, sensitivity mapping, layer activations |
+
+### Comprehensive Benchmarking (NEW in v0.10.0)
+| Command | What it does |
+|---------|-------------|
+| `isat benchmark-suite` | Full benchmark: latency (P50/P95/P99), throughput, memory profiling, scalability |
+
+### Model Security & Safety (NEW in v0.10.0)
+| Command | What it does |
+|---------|-------------|
+| `isat encrypt` | AES-256-GCM encryption, XOR obfuscation, LSB watermark fingerprinting, expiry dates |
+| `isat safety` | PII detection, toxicity filtering, jailbreak pattern detection, confidence checks |
+
+### Cloud Deployment (NEW in v0.10.0)
+| Command | What it does |
+|---------|-------------|
+| `isat cloud-deploy` | Generate Dockerfile, K8s manifests, SageMaker handler, Azure ML, GCP Vertex, FastAPI server |
+
+### Automated Testing (NEW in v0.10.0)
+| Command | What it does |
+|---------|-------------|
+| `isat test` | Determinism, numerical stability, edge cases, cross-provider, memory leaks, golden tests + JUnit |
 
 ### Auto-Tuning & Search
 | Command | What it does |
@@ -195,6 +237,10 @@ pip install "isat-tuner[convert-hf]"    # HuggingFace only (optimum)
 pip install "isat-tuner[convert-pt]"    # PyTorch only
 pip install "isat-tuner[convert-tf]"    # TensorFlow only
 
+# New v0.10.0 features
+pip install "isat-tuner[stream]"        # Streaming LLM inference (transformers)
+pip install "isat-tuner[encrypt]"       # Model encryption (cryptography)
+
 # Platform-specific
 pip install "isat-tuner[rocm]"      # ROCm GPU support
 pip install "isat-tuner[cuda]"      # NVIDIA CUDA support
@@ -289,6 +335,86 @@ isat surgery model.onnx --remove-op Identity --remove-op Dropout
 
 # Launch REST API
 isat serve --port 8000
+```
+
+### Quantize (NEW in v0.10.0)
+```bash
+# Auto-select best quantization method
+isat quantize model.onnx
+
+# INT8 static quantization (CNNs)
+isat quantize model.onnx --method int8
+
+# INT4 weight-only quantization (LLMs)
+isat quantize model.onnx --method int4 --block-size 128
+
+# SmoothQuant (transformers)
+isat quantize model.onnx --method smooth --alpha 0.5
+
+# Sensitivity analysis (find which layers to keep in FP16)
+isat quantize model.onnx --sensitivity
+```
+
+### Stream LLM Inference (NEW in v0.10.0)
+```bash
+# Token-by-token generation
+isat stream model.onnx --prompt "The future of AI is" --tokenizer gpt2
+
+# Benchmark streaming performance
+isat stream model.onnx --tokenizer gpt2 --benchmark
+```
+
+### Shard & Merge (NEW in v0.10.0)
+```bash
+# Analyze model for sharding
+isat shard large_model.onnx --analyze
+
+# Split into 4 shards
+isat shard large_model.onnx --num-shards 4 --strategy balanced
+
+# Merge two models into a pipeline
+isat merge encoder.onnx decoder.onnx -o pipeline.onnx --mode chain
+
+# Parallel ensemble merge
+isat merge modelA.onnx modelB.onnx -o ensemble.onnx --mode parallel --aggregation mean
+```
+
+### Explain & Test (NEW in v0.10.0)
+```bash
+# Model explainability
+isat explain model.onnx --method perturbation
+
+# Full benchmark suite
+isat benchmark-suite model.onnx --batch-sizes 1,4,16,64
+
+# Automated testing with JUnit output
+isat test model.onnx --junit
+
+# Generate golden test file, then verify later
+isat test model.onnx --generate-golden --golden golden.npz
+isat test model.onnx --suite golden --golden golden.npz
+```
+
+### Encrypt & Safety (NEW in v0.10.0)
+```bash
+# Encrypt model weights
+isat encrypt model.onnx -o model_encrypted.onnx --method encrypt --password "secret"
+
+# Fingerprint model for IP tracking
+isat encrypt model.onnx -o model_fp.onnx --method fingerprint --owner "ACME Corp"
+
+# Safety scan on text
+isat safety --input-text "my email is john@example.com"
+```
+
+### Cloud Deploy (NEW in v0.10.0)
+```bash
+# Generate all deployment artifacts
+isat cloud-deploy model.onnx --output-dir deploy/
+
+# Docker + K8s only
+isat cloud-deploy model.onnx --target docker --output-dir deploy/
+isat cloud-deploy model.onnx --target kubernetes --replicas 4 --gpu
 ```
 
 ---
@@ -444,6 +570,39 @@ result = guard.validate({"input": my_tensor})
 
 # Cache inference results
 cache = InferenceCache(max_memory_entries=1000, disk_cache_dir="./cache")
+
+# v0.10.0 APIs
+from isat.quantize.quantizer import quantize_model, ModelQuantizer
+from isat.stream.generator import StreamingGenerator
+from isat.shard.splitter import shard_model, ModelSharder
+from isat.merge.merger import merge_models, ModelMerger
+from isat.explain.explainer import explain_model, ModelExplainer
+from isat.benchmark_suite.suite import run_benchmark_suite, BenchmarkSuite
+from isat.encrypt.protector import protect_model, ModelProtector
+from isat.safety.guardrails import SafetyGuard
+from isat.cloud_deploy.deployer import deploy_model, CloudDeployer
+from isat.model_test.tester import test_model, ModelTester
+
+# Quantize (auto-selects best method)
+result = quantize_model("model.onnx", "model_q.onnx", method="auto")
+print(result.compression_ratio)
+
+# Stream LLM tokens
+gen = StreamingGenerator("llm.onnx", max_length=512)
+tokens = gen.generate_text("Hello world", tokenizer_name="gpt2")
+
+# Safety check
+guard = SafetyGuard()
+report = guard.run_all(input_text="user input here")
+
+# Automated testing
+tester = ModelTester("model.onnx")
+results = tester.run_all()
+print(f"{results.passed}/{results.total_tests} passed")
+
+# Cloud deployment
+deployer = CloudDeployer("model.onnx")
+deployer.generate_all("deploy_output/")
 ```
 
 ---
@@ -462,10 +621,30 @@ echo $?  # 0 = pass, 1 = fail
 
 ```
 isat/
-├── cli.py                 # 56 subcommands
+├── cli.py                 # 66 subcommands
 ├── converter/             # Universal model-to-ONNX conversion engine
 │   ├── engine.py          #   Format detection + dispatch
 │   └── backends.py        #   HuggingFace, PyTorch, TF, JAX, TFLite, SafeTensors
+├── quantize/              # Advanced quantization engine (v0.10.0)
+│   └── quantizer.py       #   INT4/INT8/FP16/mixed/SmoothQuant
+├── stream/                # Streaming LLM inference (v0.10.0)
+│   └── generator.py       #   Token generation with KV cache
+├── shard/                 # Model sharding (v0.10.0)
+│   └── splitter.py        #   Graph splitting + pipeline runner
+├── merge/                 # Model merging (v0.10.0)
+│   └── merger.py          #   Chain/parallel composition
+├── explain/               # Explainability (v0.10.0)
+│   └── explainer.py       #   Feature importance, gradient, sensitivity
+├── benchmark_suite/       # Comprehensive benchmarks (v0.10.0)
+│   └── suite.py           #   Latency/throughput/memory/scalability
+├── encrypt/               # Model protection (v0.10.0)
+│   └── protector.py       #   AES-256, fingerprint, obfuscation
+├── safety/                # Safety guardrails (v0.10.0)
+│   └── guardrails.py      #   PII, toxicity, jailbreak detection
+├── cloud_deploy/          # Cloud deployment (v0.10.0)
+│   └── deployer.py        #   Docker/K8s/SageMaker/Azure/GCP
+├── model_test/            # Automated testing (v0.10.0)
+│   └── tester.py          #   Determinism, stability, golden tests
 ├── auto_detect/           # Hardware auto-detection + inference recommendations
 │   ├── detector.py        #   Cross-platform GPU/CPU detection
 │   ├── recommender.py     #   Vendor-specific recipe generation
@@ -542,6 +721,8 @@ isat/
 
 Optional:
 - **Conversion**: `optimum[exporters]`, `torch`, `tensorflow`, `tf2onnx`, `safetensors`, `onnxsim`
+- **Streaming**: `transformers` (for tokenizer in `isat stream`)
+- **Encryption**: `cryptography` (for `isat encrypt` AES-256-GCM)
 - **Server**: `fastapi`, `uvicorn`
 - **Optimization**: `scipy`, `onnxsim`
 - **Monitoring**: `prometheus-client`, `pyyaml`, `jinja2`
@@ -552,6 +733,7 @@ Optional:
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.10.0 | May 2026 | 10 new modules: quantize, stream, shard, merge, explain, benchmark-suite, encrypt, safety, cloud-deploy, test (66 commands) |
 | v0.9.1 | May 2026 | Universal model converter (`isat onnx`), 6-model E2E validation, PyTorch 2.9+ compat, multi-modal export (56 commands) |
 | v0.8.x | Apr 2026 | Auto-detect hardware, generate inference scripts, Windows DirectML + MIGraphX via WinML, cross-platform GPU detection |
 | v0.7.x | Apr 2026 | Pruning, distillation, fusion analysis, LLM bench, compiler comparison, replay, drift monitor, codegen (55 commands) |
@@ -571,7 +753,7 @@ Optional:
   author = {Sudheer Ibrahim Daniel Devu},
   title = {ISAT: Inference Stack Auto-Tuner},
   year = {2026},
-  version = {0.9.1},
+  version = {0.10.0},
   url = {https://github.com/SID-Devu/isat-tuner},
   license = {Apache-2.0}
 }

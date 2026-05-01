@@ -483,6 +483,105 @@ def main(argv: list[str] | None = None) -> int:
     p_onnx.add_argument("--no-tune", action="store_true", help="Skip auto best-config after conversion")
     p_onnx.add_argument("--simplify", action="store_true", help="Simplify ONNX graph with onnxsim after conversion")
 
+    # ── quantize ─────────────────────────────────────────────
+    p_q = sub.add_parser("quantize", help="Advanced model quantization (INT4/INT8/FP16/SmoothQuant/mixed)")
+    p_q.add_argument("model", help="Path to .onnx model")
+    p_q.add_argument("--output", "-o", default=None, help="Output path (default: auto-named)")
+    p_q.add_argument("--method", choices=["auto", "int8", "int4", "fp16", "mixed", "smooth"], default="auto")
+    p_q.add_argument("--per-channel", action="store_true", default=True, help="Per-channel INT8 (default)")
+    p_q.add_argument("--block-size", type=int, default=128, help="INT4 block size")
+    p_q.add_argument("--alpha", type=float, default=0.5, help="SmoothQuant alpha")
+    p_q.add_argument("--sensitivity", action="store_true", help="Run sensitivity analysis only")
+
+    # ── stream ───────────────────────────────────────────────
+    p_st = sub.add_parser("stream", help="Streaming token-by-token LLM inference with KV cache")
+    p_st.add_argument("model", help="Path to .onnx LLM model")
+    p_st.add_argument("--prompt", default="Hello, my name is", help="Input prompt")
+    p_st.add_argument("--tokenizer", default=None, help="HuggingFace tokenizer name/path")
+    p_st.add_argument("--max-tokens", type=int, default=128, help="Max new tokens to generate")
+    p_st.add_argument("--temperature", type=float, default=0.8)
+    p_st.add_argument("--top-k", type=int, default=50)
+    p_st.add_argument("--top-p", type=float, default=0.9)
+    p_st.add_argument("--provider", default="CPUExecutionProvider")
+    p_st.add_argument("--benchmark", action="store_true", help="Run generation benchmark")
+
+    # ── shard ────────────────────────────────────────────────
+    p_sh = sub.add_parser("shard", help="Split model into shards for multi-GPU / memory-constrained inference")
+    p_sh.add_argument("model", help="Path to .onnx model")
+    p_sh.add_argument("--num-shards", type=int, default=2, help="Number of shards")
+    p_sh.add_argument("--output-dir", default=None, help="Output directory for shards")
+    p_sh.add_argument("--strategy", choices=["balanced", "layer", "auto"], default="auto")
+    p_sh.add_argument("--analyze", action="store_true", help="Show shard analysis only")
+    p_sh.add_argument("--validate", action="store_true", help="Validate existing shards")
+
+    # ── merge ────────────────────────────────────────────────
+    p_mg = sub.add_parser("merge", help="Merge/compose multiple ONNX models into one")
+    p_mg.add_argument("models", nargs="+", help="Paths to .onnx models to merge")
+    p_mg.add_argument("--output", "-o", required=True, help="Output path for merged model")
+    p_mg.add_argument("--mode", choices=["chain", "parallel"], default="chain")
+    p_mg.add_argument("--aggregation", choices=["concat", "mean", "max", "sum"], default="concat",
+                       help="Parallel aggregation mode")
+    p_mg.add_argument("--validate", action="store_true", help="Validate merged model matches originals")
+
+    # ── explain ──────────────────────────────────────────────
+    p_ex = sub.add_parser("explain", help="Model explainability (feature importance, sensitivity, activations)")
+    p_ex.add_argument("model", help="Path to .onnx model")
+    p_ex.add_argument("--method", choices=["auto", "perturbation", "gradient", "sensitivity"], default="auto")
+    p_ex.add_argument("--num-samples", type=int, default=50)
+    p_ex.add_argument("--provider", default="CPUExecutionProvider")
+    p_ex.add_argument("--layer", default=None, help="Specific layer to analyze")
+
+    # ── benchmark-suite ──────────────────────────────────────
+    p_bs = sub.add_parser("benchmark-suite", help="Comprehensive benchmark suite (latency, throughput, memory, scalability)")
+    p_bs.add_argument("model", help="Path to .onnx model")
+    p_bs.add_argument("--provider", default="auto")
+    p_bs.add_argument("--output-dir", default=None, help="Directory for benchmark reports")
+    p_bs.add_argument("--batch-sizes", default="1,2,4,8,16,32", help="Comma-separated batch sizes")
+    p_bs.add_argument("--duration", type=int, default=30, help="Throughput test duration (seconds)")
+    p_bs.add_argument("--latency-only", action="store_true")
+    p_bs.add_argument("--throughput-only", action="store_true")
+    p_bs.add_argument("--memory-only", action="store_true")
+
+    # ── encrypt ──────────────────────────────────────────────
+    p_en = sub.add_parser("encrypt", help="Encrypt, fingerprint, or protect ONNX model weights")
+    p_en.add_argument("model", help="Path to .onnx model")
+    p_en.add_argument("--output", "-o", required=True, help="Output path")
+    p_en.add_argument("--method", choices=["encrypt", "decrypt", "obfuscate", "deobfuscate",
+                                            "fingerprint", "verify"], default="encrypt")
+    p_en.add_argument("--password", default=None, help="Encryption/decryption password")
+    p_en.add_argument("--seed", type=int, default=None, help="Obfuscation seed")
+    p_en.add_argument("--owner", default=None, help="Owner ID for fingerprinting")
+
+    # ── safety ───────────────────────────────────────────────
+    p_sf = sub.add_parser("safety", help="Model safety guardrails (PII, toxicity, jailbreak detection)")
+    p_sf.add_argument("--input-text", default=None, help="Input text to check")
+    p_sf.add_argument("--output-text", default=None, help="Output text to check")
+    p_sf.add_argument("--input-file", default=None, help="File with input text")
+    p_sf.add_argument("--output-file", default=None, help="File with output text")
+    p_sf.add_argument("--check", choices=["all", "pii", "toxic", "jailbreak", "confidence", "format"],
+                       default="all")
+
+    # ── cloud-deploy ─────────────────────────────────────────
+    p_cd = sub.add_parser("cloud-deploy", help="Generate cloud deployment artifacts (Docker, K8s, SageMaker, Azure, GCP)")
+    p_cd.add_argument("model", help="Path to .onnx model")
+    p_cd.add_argument("--output-dir", default=None, help="Output directory for deployment artifacts")
+    p_cd.add_argument("--target", choices=["all", "docker", "kubernetes", "sagemaker", "azure", "gcp", "handler"],
+                       default="all")
+    p_cd.add_argument("--replicas", type=int, default=2, help="K8s replicas")
+    p_cd.add_argument("--gpu", action="store_true", help="Enable GPU support in generated configs")
+
+    # ── test ─────────────────────────────────────────────────
+    p_t = sub.add_parser("test", help="Automated model testing (determinism, stability, edge cases, cross-provider)")
+    p_t.add_argument("model", help="Path to .onnx model")
+    p_t.add_argument("--provider", default="auto")
+    p_t.add_argument("--output-dir", default=None, help="Output directory for test report")
+    p_t.add_argument("--suite", choices=["all", "determinism", "stability", "edge", "input",
+                                          "cross-provider", "latency", "memory", "golden"],
+                      default="all")
+    p_t.add_argument("--golden", default=None, help="Path to golden test file (.npz)")
+    p_t.add_argument("--generate-golden", action="store_true", help="Generate golden test file")
+    p_t.add_argument("--junit", action="store_true", help="Output JUnit XML for CI")
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -568,6 +667,16 @@ def main(argv: list[str] | None = None) -> int:
             "weight-sharing": _cmd_weight_sharing,
             "codegen": _cmd_codegen,
             "onnx": _cmd_onnx,
+            "quantize": _cmd_quantize,
+            "stream": _cmd_stream,
+            "shard": _cmd_shard,
+            "merge": _cmd_merge,
+            "explain": _cmd_explain,
+            "benchmark-suite": _cmd_benchmark_suite,
+            "encrypt": _cmd_encrypt,
+            "safety": _cmd_safety,
+            "cloud-deploy": _cmd_cloud_deploy,
+            "test": _cmd_test,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -2171,6 +2280,487 @@ def _cmd_codegen(args) -> int:
     print(result.summary())
     print(f"{'='*65}\n")
     return 0
+
+
+def _cmd_quantize(args) -> int:
+    from isat.quantize.quantizer import ModelQuantizer, quantize_model
+
+    print(BANNER)
+    model_path = args.model
+    output = args.output
+    if output is None:
+        stem = Path(model_path).stem
+        output = str(Path(model_path).parent / f"{stem}_{args.method}.onnx")
+
+    if args.sensitivity:
+        print(f"  Running sensitivity analysis on {model_path} ...")
+        q = ModelQuantizer(model_path)
+        result = q.sensitivity_analysis()
+        print(f"\n  {'Layer':<50} {'Error Delta':>12}")
+        print(f"  {'─'*62}")
+        for layer, delta in sorted(result.items(), key=lambda x: x[1], reverse=True)[:20]:
+            print(f"  {layer:<50} {delta:>12.6f}")
+        return 0
+
+    print(f"  Model      : {model_path}")
+    print(f"  Method     : {args.method}")
+    print(f"  Output     : {output}")
+    print()
+
+    result = quantize_model(
+        model_path=model_path,
+        output_path=output,
+        method=args.method,
+        per_channel=args.per_channel,
+        block_size=args.block_size,
+        alpha=args.alpha,
+    )
+
+    if not result.success:
+        print(f"\n  QUANTIZATION FAILED: {result.error}")
+        return 1
+
+    print(f"  Method            : {result.method}")
+    print(f"  Original size     : {result.original_size_mb:.1f} MB")
+    print(f"  Quantized size    : {result.quantized_size_mb:.1f} MB")
+    print(f"  Compression ratio : {result.compression_ratio:.2f}x")
+    print(f"  Time              : {result.elapsed_s:.1f}s")
+    print(f"\n  Output: {result.output_path}")
+    return 0
+
+
+def _cmd_stream(args) -> int:
+    from isat.stream.generator import StreamingGenerator
+
+    print(BANNER)
+    model_path = args.model
+
+    gen = StreamingGenerator(
+        model_path=model_path,
+        provider=args.provider,
+        max_length=args.max_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+    )
+
+    if args.benchmark:
+        print(f"  Benchmarking streaming inference on {model_path} ...")
+        try:
+            tokenizer_name = args.tokenizer
+            if tokenizer_name is None:
+                print("  --tokenizer required for benchmark mode")
+                return 1
+            from transformers import AutoTokenizer
+            tok = AutoTokenizer.from_pretrained(tokenizer_name)
+            ids = tok.encode(args.prompt)
+            metrics = gen.benchmark(ids, max_new_tokens=args.max_tokens)
+            print(f"\n  TTFT           : {metrics.ttft_ms:.1f} ms")
+            print(f"  Mean ITL       : {metrics.mean_itl_ms:.1f} ms")
+            print(f"  P95 ITL        : {metrics.p95_itl_ms:.1f} ms")
+            print(f"  Tokens/sec     : {metrics.tokens_per_sec:.1f}")
+            print(f"  Total tokens   : {metrics.total_tokens}")
+            print(f"  Total time     : {metrics.total_time_ms:.0f} ms")
+        except Exception as e:
+            print(f"  Benchmark failed: {e}")
+            return 1
+        return 0
+
+    print(f"  Model    : {model_path}")
+    print(f"  Prompt   : {args.prompt}")
+    print(f"  Provider : {args.provider}")
+    print()
+
+    try:
+        result = gen.generate_text(
+            prompt=args.prompt,
+            tokenizer_name=args.tokenizer,
+            max_new_tokens=args.max_tokens,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
+        )
+        print(f"\n  Generated text:\n")
+        print(f"  {result}")
+    except Exception as e:
+        print(f"  Generation failed: {e}")
+        return 1
+    return 0
+
+
+def _cmd_shard(args) -> int:
+    from isat.shard.splitter import ModelSharder, shard_model
+
+    print(BANNER)
+    model_path = args.model
+
+    sharder = ModelSharder(model_path)
+
+    if args.analyze:
+        print(f"  Analyzing {model_path} for sharding ...\n")
+        analysis = sharder.analyze()
+        print(f"  Total params       : {analysis.total_params:,}")
+        print(f"  Total size         : {analysis.total_size_mb:.1f} MB")
+        print(f"  Num layers         : {analysis.num_layers}")
+        print(f"  Recommended shards : {analysis.recommended_shards}")
+        print(f"  Memory per shard   : {analysis.memory_per_shard_mb:.1f} MB")
+        print(f"\n  Top layers by size:")
+        for name, size in sorted(analysis.layer_sizes.items(), key=lambda x: x[1], reverse=True)[:10]:
+            print(f"    {name:<50} {size:>8.2f} MB")
+        return 0
+
+    if args.validate:
+        output_dir = args.output_dir or str(Path(model_path).parent / "shards")
+        print(f"  Validating shards in {output_dir} ...")
+        ok = sharder.validate_shards(output_dir)
+        print(f"  Validation: {'PASSED' if ok else 'FAILED'}")
+        return 0 if ok else 1
+
+    output_dir = args.output_dir or str(Path(model_path).parent / f"{Path(model_path).stem}_shards")
+    print(f"  Model      : {model_path}")
+    print(f"  Shards     : {args.num_shards}")
+    print(f"  Strategy   : {args.strategy}")
+    print(f"  Output dir : {output_dir}")
+    print()
+
+    result = shard_model(model_path, args.num_shards, output_dir, args.strategy)
+    if not result.success:
+        print(f"\n  SHARDING FAILED: {result.error}")
+        return 1
+
+    print(f"  Created {result.num_shards} shards in {result.elapsed_s:.1f}s:")
+    for p, s in zip(result.shard_paths, result.shard_sizes_mb):
+        print(f"    {Path(p).name:<40} {s:>8.1f} MB")
+    return 0
+
+
+def _cmd_merge(args) -> int:
+    from isat.merge.merger import merge_models
+
+    print(BANNER)
+    print(f"  Models : {', '.join(args.models)}")
+    print(f"  Mode   : {args.mode}")
+    print(f"  Output : {args.output}")
+    print()
+
+    kwargs = {}
+    if args.mode == "parallel":
+        kwargs["aggregation"] = args.aggregation
+
+    result = merge_models(args.models, args.output, mode=args.mode, **kwargs)
+    if not result.success:
+        print(f"\n  MERGE FAILED: {result.error}")
+        return 1
+
+    print(f"  Models merged      : {result.num_models_merged}")
+    print(f"  Total nodes        : {result.total_nodes}")
+    print(f"  Total size         : {result.total_size_mb:.1f} MB")
+    print(f"  Time               : {result.elapsed_s:.1f}s")
+    print(f"\n  Output: {result.output_path}")
+
+    if args.validate:
+        from isat.merge.merger import ModelMerger
+        m = ModelMerger()
+        ok = m.validate(args.output, args.models)
+        print(f"  Validation: {'PASSED' if ok else 'FAILED'}")
+        if not ok:
+            return 1
+    return 0
+
+
+def _cmd_explain(args) -> int:
+    from isat.explain.explainer import explain_model
+
+    print(BANNER)
+    print(f"  Model    : {args.model}")
+    print(f"  Method   : {args.method}")
+    print(f"  Provider : {args.provider}")
+    print()
+
+    report = explain_model(args.model, method=args.method)
+    print(f"  Input shapes       : {report.input_shapes}")
+    print(f"  Method used        : {report.method_used}")
+    print(f"  Time               : {report.elapsed_s:.1f}s")
+
+    if report.feature_importance:
+        print(f"\n  Feature importance (top inputs):")
+        for name, imp in report.feature_importance.items():
+            import numpy as np
+            mean_imp = float(np.mean(imp)) if hasattr(imp, '__len__') else imp
+            print(f"    {name:<40} mean={mean_imp:.6f}")
+
+    if report.top_sensitive_regions:
+        print(f"\n  Top sensitive regions:")
+        for region in report.top_sensitive_regions[:10]:
+            print(f"    {region}")
+
+    if report.attention_layers:
+        print(f"\n  Attention layers found: {len(report.attention_layers)}")
+    return 0
+
+
+def _cmd_benchmark_suite(args) -> int:
+    from isat.benchmark_suite.suite import BenchmarkSuite, run_benchmark_suite
+
+    print(BANNER)
+    model_path = args.model
+    provider = args.provider if args.provider != "auto" else None
+    batch_sizes = [int(x) for x in args.batch_sizes.split(",")]
+
+    print(f"  Model        : {model_path}")
+    print(f"  Provider     : {args.provider}")
+    print(f"  Batch sizes  : {batch_sizes}")
+    print()
+
+    suite = BenchmarkSuite(model_path, provider=provider, output_dir=args.output_dir)
+
+    if args.latency_only:
+        report = suite.run_latency(batch_sizes=batch_sizes)
+        print("  Latency results:")
+        for bs, stats in report.items():
+            print(f"    batch={bs:<4}  mean={stats['mean_ms']:.2f}ms  p95={stats['p95_ms']:.2f}ms  p99={stats['p99_ms']:.2f}ms")
+        return 0
+
+    if args.throughput_only:
+        report = suite.run_throughput(duration_s=args.duration)
+        print(f"  Throughput    : {report['inferences_per_sec']:.1f} inf/s")
+        print(f"  Total infer   : {report['total_inferences']}")
+        print(f"  Mean latency  : {report['mean_latency_ms']:.2f} ms")
+        return 0
+
+    if args.memory_only:
+        report = suite.run_memory(batch_sizes=batch_sizes)
+        print("  Memory results:")
+        for bs, stats in report.items():
+            print(f"    batch={bs:<4}  peak_rss={stats['peak_rss_mb']:.1f} MB")
+        return 0
+
+    result = suite.run_all(output_dir=args.output_dir)
+    suite.generate_report(result, args.output_dir)
+    print(f"\n  Full benchmark complete. Reports saved to: {args.output_dir or 'current directory'}")
+    return 0
+
+
+def _cmd_encrypt(args) -> int:
+    from isat.encrypt.protector import ModelProtector, protect_model
+
+    print(BANNER)
+    model_path = args.model
+    method = args.method
+
+    print(f"  Model    : {model_path}")
+    print(f"  Method   : {method}")
+    print(f"  Output   : {args.output}")
+    print()
+
+    if method == "encrypt":
+        if not args.password:
+            print("  ERROR: --password required for encryption")
+            return 1
+        p = ModelProtector(model_path)
+        result = p.encrypt(args.output, args.password)
+    elif method == "decrypt":
+        if not args.password:
+            print("  ERROR: --password required for decryption")
+            return 1
+        p = ModelProtector(model_path)
+        result = p.decrypt(model_path, args.output, args.password)
+    elif method == "obfuscate":
+        p = ModelProtector(model_path)
+        result = p.obfuscate(args.output, seed=args.seed)
+    elif method == "deobfuscate":
+        if args.seed is None:
+            print("  ERROR: --seed required for deobfuscation")
+            return 1
+        p = ModelProtector(model_path)
+        result = p.deobfuscate(model_path, args.output, args.seed)
+    elif method == "fingerprint":
+        if not args.owner:
+            print("  ERROR: --owner required for fingerprinting")
+            return 1
+        p = ModelProtector(model_path)
+        result = p.fingerprint(args.output, args.owner)
+    elif method == "verify":
+        if not args.owner:
+            print("  ERROR: --owner required for verification")
+            return 1
+        p = ModelProtector(model_path)
+        verified = p.verify_fingerprint(model_path, args.owner)
+        print(f"  Fingerprint verified: {verified}")
+        return 0 if verified else 1
+    else:
+        print(f"  Unknown method: {method}")
+        return 1
+
+    if not result.success:
+        print(f"\n  FAILED: {result.error}")
+        return 1
+
+    print(f"  Original size  : {result.original_size_mb:.1f} MB")
+    print(f"  Output size    : {result.protected_size_mb:.1f} MB")
+    print(f"  Time           : {result.elapsed_s:.1f}s")
+    print(f"\n  Output: {result.output_path}")
+    return 0
+
+
+def _cmd_safety(args) -> int:
+    from isat.safety.guardrails import SafetyGuard
+
+    print(BANNER)
+
+    guard = SafetyGuard()
+
+    input_text = args.input_text
+    output_text = args.output_text
+    if args.input_file:
+        input_text = Path(args.input_file).read_text()
+    if args.output_file:
+        output_text = Path(args.output_file).read_text()
+
+    if not input_text and not output_text:
+        print("  ERROR: Provide --input-text, --output-text, --input-file, or --output-file")
+        return 1
+
+    report = guard.run_all(input_text=input_text, output_text=output_text)
+
+    print(f"  Overall safe   : {'YES' if report.overall_safe else 'NO'}")
+    print(f"  Checks run     : {len(report.checks)}")
+    print(f"  Time           : {report.elapsed_ms:.0f} ms")
+    print()
+
+    for check in report.checks:
+        status = "PASS" if check.passed else "FAIL"
+        print(f"  [{status}] {check.category:<20} severity={check.severity}")
+        if check.findings:
+            for f in check.findings[:5]:
+                print(f"         - {f}")
+    return 0
+
+
+def _cmd_cloud_deploy(args) -> int:
+    from isat.cloud_deploy.deployer import CloudDeployer, deploy_model
+
+    print(BANNER)
+    model_path = args.model
+    output_dir = args.output_dir or str(Path(model_path).parent / f"{Path(model_path).stem}_deploy")
+
+    print(f"  Model      : {model_path}")
+    print(f"  Target     : {args.target}")
+    print(f"  Output dir : {output_dir}")
+    print()
+
+    deployer = CloudDeployer(model_path)
+    target = args.target
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    generated = []
+    if target in ("all", "handler"):
+        p = deployer.generate_inference_handler(output_dir)
+        generated.append(("Inference handler", p))
+    if target in ("all", "docker"):
+        p = deployer.generate_dockerfile(output_dir, gpu=args.gpu)
+        generated.append(("Dockerfile", p))
+    if target in ("all", "kubernetes"):
+        paths = deployer.generate_kubernetes(output_dir, replicas=args.replicas, gpu=args.gpu)
+        for pp in paths:
+            generated.append(("K8s manifest", pp))
+    if target in ("all", "sagemaker"):
+        p = deployer.generate_sagemaker(output_dir)
+        generated.append(("SageMaker artifacts", p))
+    if target in ("all", "azure"):
+        p = deployer.generate_azure_ml(output_dir)
+        generated.append(("Azure ML artifacts", p))
+    if target in ("all", "gcp"):
+        p = deployer.generate_gcp_vertex(output_dir)
+        generated.append(("GCP Vertex artifacts", p))
+
+    print(f"  Generated {len(generated)} artifacts:")
+    for label, path in generated:
+        print(f"    {label:<25} {path}")
+
+    cost = deployer.estimate_cost()
+    print(f"\n  Estimated monthly costs (10K req/day):")
+    for provider, est in cost.items():
+        print(f"    {provider:<12} ${est:.0f}/month")
+    return 0
+
+
+def _cmd_test(args) -> int:
+    from isat.model_test.tester import ModelTester, test_model
+
+    print(BANNER)
+    model_path = args.model
+
+    tester = ModelTester(model_path, provider=args.provider if args.provider != "auto" else None)
+
+    if args.generate_golden:
+        if not args.golden:
+            golden_path = str(Path(model_path).with_suffix(".golden.npz"))
+        else:
+            golden_path = args.golden
+        print(f"  Generating golden test file: {golden_path}")
+        import numpy as np
+        inputs = tester._build_random_inputs(tester._session)
+        tester.generate_golden(inputs, golden_path)
+        print(f"  Done.")
+        return 0
+
+    print(f"  Model    : {model_path}")
+    print(f"  Provider : {args.provider}")
+    print(f"  Suite    : {args.suite}")
+    print()
+
+    suite_map = {
+        "determinism": tester.test_determinism,
+        "stability": tester.test_numerical_stability,
+        "edge": tester.test_edge_cases,
+        "input": tester.test_input_validation,
+        "cross-provider": tester.test_cross_provider,
+        "latency": tester.test_latency_consistency,
+        "memory": tester.test_memory_safety,
+    }
+
+    if args.suite == "golden":
+        if not args.golden:
+            print("  ERROR: --golden PATH required for golden test")
+            return 1
+        result = tester.test_golden(args.golden)
+        results = type("R", (), {"total_tests": 1, "passed": int(result.passed), "failed": int(not result.passed),
+                                  "skipped": 0, "results": [result], "elapsed_s": result.elapsed_ms / 1000})()
+    elif args.suite == "all":
+        results = tester.run_all()
+    elif args.suite in suite_map:
+        r = suite_map[args.suite]()
+        results = type("R", (), {"total_tests": 1, "passed": int(r.passed), "failed": int(not r.passed),
+                                  "skipped": 0, "results": [r], "elapsed_s": r.elapsed_ms / 1000})()
+    else:
+        print(f"  Unknown suite: {args.suite}")
+        return 1
+
+    print(f"  {'='*60}")
+    print(f"  TEST RESULTS")
+    print(f"  {'='*60}")
+    print(f"  Total    : {results.total_tests}")
+    print(f"  Passed   : {results.passed}")
+    print(f"  Failed   : {results.failed}")
+    print(f"  Skipped  : {results.skipped}")
+    print(f"  Time     : {results.elapsed_s:.1f}s")
+    print()
+
+    for r in results.results:
+        status = "PASS" if r.passed else "FAIL"
+        print(f"  [{status}] {r.name:<35} ({r.elapsed_ms:.0f}ms)")
+        if not r.passed and r.details:
+            print(f"         {r.details[:100]}")
+
+    if args.junit:
+        xml = results.to_junit_xml() if hasattr(results, 'to_junit_xml') else "<testsuites/>"
+        junit_path = str(Path(args.output_dir or ".") / "test_results.xml")
+        Path(junit_path).write_text(xml)
+        print(f"\n  JUnit XML: {junit_path}")
+
+    return 0 if results.failed == 0 else 1
 
 
 def _cmd_onnx(args) -> int:

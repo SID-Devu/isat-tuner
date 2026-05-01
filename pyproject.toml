@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isat-tuner"
-version = "0.11.0"
-description = "ISAT: Inference Stack Auto-Tuner — 76-command CLI with speculative decoding, continuous batching, grammar-constrained generation, LoRA hot-swap, tensor parallelism, CUDA graph capture, mixed-precision search, knowledge distillation, architecture surgery, and live monitoring."
+version = "0.12.0"
+description = "ISAT: Inference Stack Auto-Tuner — 91-command production inference engine with KV cache compression, disaggregated prefill-decode, MoE expert parallelism, model routing/cascade, multi-modal pipelines, RAG engine, long context (100K+), inference compiler, SLO scheduling, prompt caching, AI watermarking, token economics, session management, shadow deployment, and edge-cloud hybrid inference."
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
@@ -30,6 +30,13 @@ keywords = [
     "grammar-constrained-generation", "lora-adapter", "tensor-parallelism",
     "cuda-graph-capture", "mixed-precision", "knowledge-distillation",
     "architecture-surgery", "live-monitoring", "rejection-sampling",
+    "kv-cache-compression", "disaggregated-inference", "mixture-of-experts",
+    "model-routing", "cascade-inference", "multimodal-pipeline",
+    "rag-engine", "vector-search", "long-context", "rope-scaling",
+    "inference-compiler", "kernel-fusion", "slo-scheduling",
+    "prompt-caching", "radix-tree", "ai-watermarking",
+    "token-economics", "cost-attribution", "session-management",
+    "shadow-deployment", "edge-cloud-inference",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

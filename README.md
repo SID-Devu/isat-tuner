@@ -3,7 +3,7 @@
   <p align="center"><strong>Inference Stack Auto-Tuner</strong></p>
   <p align="center">
     A production-grade inference engine for ONNX models.<br/>
-    76 CLI commands. Any GPU. Any framework. One tool.
+    91 CLI commands. Any GPU. Any framework. One tool.
   </p>
 </p>
 
@@ -24,7 +24,7 @@
 
 **What ISAT does in one sentence:**
 
-ISAT converts models from any framework to ONNX, auto-detects your hardware, and provides 76 production commands — from speculative decoding and continuous batching to tensor parallelism and live monitoring — that compete with vLLM, TensorRT-LLM, and DeepSpeed.
+ISAT converts models from any framework to ONNX, auto-detects your hardware, and provides 91 production commands — from KV cache compression and disaggregated prefill-decode to RAG engines, AI watermarking, and edge-cloud hybrid inference — that compete with vLLM, TensorRT-LLM, and DeepSpeed.
 
 </td>
 <td width="50%">
@@ -53,12 +53,12 @@ isat speculate model.onnx --draft draft.onnx
 
 | Metric | Value |
 |--------|-------|
-| CLI commands | **76** |
+| CLI commands | **91** |
 | Supported GPU vendors | **6** (AMD, NVIDIA, Intel, Apple, Qualcomm, DirectML) |
 | Model conversion backends | **7** (HuggingFace, PyTorch, TensorFlow, JAX, TFLite, SafeTensors, ONNX) |
 | E2E validated HuggingFace models | **6** (ViT, CLIP, DETR, BLIP, DistilGPT2, OPT-1.3B) |
-| Lines of Python | **30,000+** |
-| Modules | **40+** |
+| Lines of Python | **45,000+** |
+| Modules | **55+** |
 | PyPI package | [`isat-tuner`](https://pypi.org/project/isat-tuner/) |
 
 ---
@@ -66,6 +66,28 @@ isat speculate model.onnx --draft draft.onnx
 ## Feature Overview
 
 ISAT is organized into three tiers of capability:
+
+### Tier 0 — Trillion-Dollar Infrastructure (NEW in v0.12.0)
+
+Features deployed at Google, OpenAI, Meta, Microsoft, and Anthropic.
+
+| Command | Capability | How it works |
+|---------|-----------|--------------|
+| `isat kv-compress` | **KV cache compression** | KIVI INT4/INT8 quantization for 2-4x longer contexts. H2O eviction keeps only high-attention tokens. Sliding window with attention sinks for infinite generation. |
+| `isat disaggregate` | **Disaggregated prefill-decode** | Splitwise/DistServe architecture: prefill on compute-optimized GPUs, decode on bandwidth-optimized GPUs, KV transfer with optional compression. |
+| `isat moe` | **MoE expert parallelism** | Top-k routing, expert caching (hot in GPU, cold on CPU), load balancing with auxiliary loss, auto-detect MoE structure from ONNX graph. |
+| `isat route` | **Model router/cascade** | Route to cheapest model that can handle the request. Cascade: try small first, escalate on low confidence. Saves 50-90% compute. |
+| `isat multimodal` | **Multi-modal pipeline** | Orchestrate vision/audio/text encoders feeding into LLM backbone. Dynamic resolution, audio chunking, embedding interleaving. |
+| `isat rag` | **RAG engine** | Full pipeline: recursive chunking, HNSW vector index (pure numpy), BM25 sparse search, hybrid RRF fusion, cross-encoder reranking, citation extraction. |
+| `isat longctx` | **Long context (100K+)** | Ring attention, sliding window, StreamingLLM attention sinks, chunked prefill, RoPE scaling (linear/NTK/YaRN/dynamic). |
+| `isat compile` | **Inference compiler** | Pattern-matching kernel fusion (GELU, LayerNorm, attention, QKV), memory planning with lifetime analysis and greedy bin-packing. |
+| `isat slo-schedule` | **SLO-aware scheduler** | Per-request SLO targets, admission control, priority tiers, weighted fair queuing, preemption for deadline protection. |
+| `isat prompt-cache` | **Semantic prompt cache** | Radix tree prefix matching, LRU eviction, multi-tenant namespaces, cost savings analytics. |
+| `isat watermark` | **AI text watermarking** | Kirchenbauer scheme: green/red vocabulary split, logit biasing, z-test detection, multi-bit payload, robustness analysis. |
+| `isat token-econ` | **Token economics** | Per-request metering, cost attribution, budget enforcement, rate limiting, SQLite persistence, Prometheus export. |
+| `isat session` | **Multi-turn sessions** | KV cache persistence across turns, incremental prefill, session compaction, TTL expiry, disk offload. |
+| `isat shadow` | **Shadow deployment** | Run two models side-by-side, BLEU/ROUGE comparison, paired t-test with bootstrap CI, auto-promotion. |
+| `isat edge-split` | **Edge-cloud hybrid** | Layer-level split analysis, activation compression, privacy-preserving execution (raw input never leaves device). |
 
 ### Tier 1 — LLM Inference Engine
 
@@ -418,7 +440,23 @@ A single wrong choice can leave **40%+ performance on the table**. ISAT tests co
 
 ```
 isat/                               30,000+ lines of Python
-├── cli.py                          76 CLI commands
+├── cli.py                          91 CLI commands
+│
+├── kv_compress/                    KV cache compression (KIVI/H2O)
+├── disaggregate/                   Disaggregated prefill-decode
+├── moe_runtime/                    MoE expert parallelism + routing
+├── model_router/                   Cascade routing + cost-aware selection
+├── multimodal/                     Multi-modal pipeline orchestrator
+├── rag_engine/                     RAG: HNSW + BM25 + RRF + reranking
+├── long_context/                   100K+ context: RoPE scaling, ring attention
+├── inference_compiler/             Kernel fusion + memory planning
+├── slo_scheduler/                  SLO-aware scheduling + fair queuing
+├── prompt_cache/                   Radix tree prompt cache
+├── watermark/                      AI text watermarking (Kirchenbauer)
+├── token_economics/                Cost attribution + budget enforcement
+├── session_manager/                Multi-turn KV persistence
+├── shadow_deploy/                  Shadow deployment + auto-promotion
+├── edge_split/                     Edge-cloud hybrid inference
 │
 ├── speculative/                    Speculative decoding engine
 ├── llm_server/                     Continuous batching + PagedAttention
@@ -517,7 +555,8 @@ docker run --device /dev/kfd --device /dev/dri --group-add video \
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| **v0.11.0** | May 2026 | Speculative decoding, continuous batching, grammar-constrained generation, LoRA TIES/DARE/SLERP, tensor parallelism, CUDA graph capture, mixed-precision search, knowledge distillation, architecture surgery, live monitoring (76 commands) |
+| **v0.12.0** | May 2026 | Trillion-dollar features: KV cache compression, disaggregated prefill-decode, MoE runtime, model routing, multi-modal pipelines, RAG engine, long context (100K+), inference compiler, SLO scheduling, prompt caching, AI watermarking, token economics, session management, shadow deployment, edge-cloud hybrid (91 commands) |
+| v0.11.0 | May 2026 | Speculative decoding, continuous batching, grammar-constrained generation, LoRA TIES/DARE/SLERP, tensor parallelism, CUDA graph capture, mixed-precision search, knowledge distillation, architecture surgery, live monitoring (76 commands) |
 | v0.10.0 | May 2026 | Quantization, streaming, sharding, merging, explainability, benchmarking, encryption, safety, cloud deployment, automated testing (66 commands) |
 | v0.9.1 | May 2026 | Universal model converter, 6-model E2E validation, PyTorch 2.9+ compatibility (56 commands) |
 | v0.8.x | Apr 2026 | Auto-detect hardware, inference script generation, Windows DirectML, cross-platform GPU detection |
@@ -558,9 +597,9 @@ cd isat && pip install -e ".[dev,all]"
   author = {Sudheer Ibrahim Daniel Devu},
   title  = {ISAT: Inference Stack Auto-Tuner},
   year   = {2026},
-  version = {0.11.0},
+  version = {0.12.0},
   url    = {https://github.com/SID-Devu/isat-tuner},
-  note   = {76-command production inference engine for ONNX models}
+  note   = {91-command production inference engine for ONNX models}
 }
 ```
 

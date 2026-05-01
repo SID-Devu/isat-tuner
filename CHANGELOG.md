@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.12.0] - 2026-05-01
+
+### Added -- 15 Trillion-Dollar AI Features (91 Total Commands)
+- **`isat kv-compress`**: KV cache compression -- KIVI-style INT4/INT8 quantization, H2O (Heavy-Hitter Oracle) eviction, sliding window with attention sinks, adaptive budget selection.
+- **`isat disaggregate`**: Disaggregated prefill-decode -- separate compute-bound prefill from memory-bound decode onto different GPU pools with KV cache transfer protocol.
+- **`isat moe`**: Mixture-of-Experts runtime -- expert parallelism, top-k routing with load balancing, expert caching with LRU, auxiliary load balance loss tracking.
+- **`isat route`**: Model router/cascade -- complexity classification, cascade routing (try cheap model first, escalate on low confidence), cost-aware selection with SLO constraints.
+- **`isat multimodal`**: Multi-modal pipeline orchestrator -- vision/audio/text encoders feeding into LLM backbone with projector alignment and interleaved embeddings.
+- **`isat rag`**: Production RAG engine -- recursive chunking, ONNX or TF-IDF embedding, pure-numpy HNSW vector index, BM25 sparse search, hybrid search with RRF fusion, cross-encoder reranking, citation extraction.
+- **`isat longctx`**: Long context engine (100K+ tokens) -- ring attention, sliding window attention, StreamingLLM attention sinks, chunked prefill, RoPE scaling (linear/NTK/YaRN/dynamic).
+- **`isat compile`**: Inference compiler -- pattern-matching kernel fusion (GELU, LayerNorm, attention, QKV, SkipLayerNorm), memory planning with lifetime analysis and greedy bin-packing.
+- **`isat slo-schedule`**: SLO-aware scheduler -- per-request SLO targets, admission control, priority tiers (premium/standard/batch), weighted fair queuing, preemption for SLO protection.
+- **`isat prompt-cache`**: Semantic prompt cache -- radix tree prefix matching, LRU eviction with frequency weighting, multi-tenant namespaces, cache analytics and cost savings.
+- **`isat watermark`**: AI text watermarking -- Kirchenbauer et al. green/red list scheme, multi-bit payload encoding, z-test detection, robustness analysis (truncation/deletion survival).
+- **`isat token-econ`**: Token economics -- per-request metering, cost attribution, customer budget enforcement with rate limiting, usage analytics with SQLite persistence, CSV/Prometheus export.
+- **`isat session`**: Multi-turn session manager -- KV cache persistence across turns, incremental prefill (only process new tokens), session compaction, TTL expiry, disk offload.
+- **`isat shadow`**: Shadow deployment -- run two models side-by-side, BLEU/ROUGE/semantic comparison, paired t-test with bootstrap CI, auto-promotion when statistically significant.
+- **`isat edge-split`**: Edge-cloud hybrid inference -- layer-level split point analysis, activation compression (INT8/top-k/random projection), privacy-preserving (raw input stays on-device).
+
+### Changed
+- CLI expanded from 76 to 91 commands
+- Version bumped to 0.12.0
+
 ## [0.11.0] - 2026-05-01
 
 ### Added -- 10 Cutting-Edge Modules (76 Total Commands)

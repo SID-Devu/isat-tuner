@@ -694,6 +694,150 @@ def main(argv: list[str] | None = None) -> int:
     p_ml.add_argument("--no-dashboard", action="store_true", help="Disable TUI dashboard (log-only)")
     p_ml.add_argument("--provider", default="CPUExecutionProvider")
 
+    # ── kv-compress ──────────────────────────────────────────
+    p_kvc = sub.add_parser("kv-compress", help="KV cache compression: INT4/INT8 quantization, H2O eviction, sliding window")
+    p_kvc.add_argument("model", help="Path to .onnx model")
+    p_kvc.add_argument("--method", choices=["quantize", "h2o", "sliding", "adaptive", "auto"], default="auto")
+    p_kvc.add_argument("--precision", choices=["int4", "int8", "fp16"], default="int4")
+    p_kvc.add_argument("--budget-ratio", type=float, default=0.5, help="H2O: fraction of tokens to keep")
+    p_kvc.add_argument("--window-size", type=int, default=1024, help="Sliding window size")
+    p_kvc.add_argument("--sink-size", type=int, default=4, help="Attention sink tokens to keep")
+    p_kvc.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── disaggregate ─────────────────────────────────────────
+    p_dag = sub.add_parser("disaggregate", help="Disaggregated prefill-decode: separate prefill/decode onto different GPU pools")
+    p_dag.add_argument("model", help="Path to .onnx model")
+    p_dag.add_argument("--prompt", default="The future of AI is", help="Input prompt")
+    p_dag.add_argument("--prefill-provider", default="CPUExecutionProvider")
+    p_dag.add_argument("--decode-provider", default="CPUExecutionProvider")
+    p_dag.add_argument("--max-tokens", type=int, default=128)
+    p_dag.add_argument("--benchmark", action="store_true")
+
+    # ── moe ──────────────────────────────────────────────────
+    p_moe = sub.add_parser("moe", help="Mixture-of-Experts runtime: expert parallelism, top-k routing, load balancing")
+    p_moe.add_argument("model", help="Path to MoE .onnx model")
+    p_moe.add_argument("--action", choices=["analyze", "run", "benchmark"], default="analyze")
+    p_moe.add_argument("--num-experts", type=int, default=8)
+    p_moe.add_argument("--top-k", type=int, default=2)
+    p_moe.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── route ────────────────────────────────────────────────
+    p_rt = sub.add_parser("route", help="Model router: cascade routing, complexity classification, cost-aware selection")
+    p_rt.add_argument("models", nargs="+", help="Paths to .onnx models (ordered cheapest to most expensive)")
+    p_rt.add_argument("--prompt", default="Hello world", help="Input prompt")
+    p_rt.add_argument("--strategy", choices=["cascade", "cost-aware", "round-robin"], default="cascade")
+    p_rt.add_argument("--confidence-threshold", type=float, default=0.8)
+    p_rt.add_argument("--max-tokens", type=int, default=256)
+    p_rt.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── multimodal ───────────────────────────────────────────
+    p_mm = sub.add_parser("multimodal", help="Multi-modal pipeline: orchestrate vision/audio encoders + LLM backbone")
+    p_mm.add_argument("llm", help="Path to LLM .onnx model")
+    p_mm.add_argument("--encoder", action="append", default=[], help="Encoder model path(s)")
+    p_mm.add_argument("--image", default=None, help="Input image path")
+    p_mm.add_argument("--audio", default=None, help="Input audio path")
+    p_mm.add_argument("--text", default=None, help="Input text prompt")
+    p_mm.add_argument("--max-tokens", type=int, default=256)
+    p_mm.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── rag ──────────────────────────────────────────────────
+    p_rag = sub.add_parser("rag", help="RAG engine: chunk, embed, index, retrieve, rerank, generate with citations")
+    p_rag.add_argument("--action", choices=["ingest", "query", "index-stats"], default="query")
+    p_rag.add_argument("--documents", nargs="*", default=[], help="Document files to ingest")
+    p_rag.add_argument("--query", default=None, help="Query string")
+    p_rag.add_argument("--llm", default=None, help="LLM .onnx model for generation")
+    p_rag.add_argument("--embedding-model", default=None, help="Embedding .onnx model")
+    p_rag.add_argument("--chunk-size", type=int, default=512)
+    p_rag.add_argument("--top-k", type=int, default=5)
+    p_rag.add_argument("--method", choices=["dense", "sparse", "hybrid"], default="hybrid")
+    p_rag.add_argument("--index-path", default=None, help="Path to save/load index")
+
+    # ── longctx ──────────────────────────────────────────────
+    p_lc = sub.add_parser("longctx", help="Long context engine: ring attention, sliding window, attention sinks, RoPE scaling")
+    p_lc.add_argument("model", help="Path to .onnx model")
+    p_lc.add_argument("--action", choices=["analyze", "extend", "generate"], default="analyze")
+    p_lc.add_argument("--target-context", type=int, default=32768)
+    p_lc.add_argument("--method", choices=["auto", "linear", "ntk", "yarn", "dynamic"], default="auto")
+    p_lc.add_argument("--window-size", type=int, default=4096)
+    p_lc.add_argument("--output", "-o", default=None)
+    p_lc.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── compile ──────────────────────────────────────────────
+    p_cmp = sub.add_parser("compile", help="Inference compiler: pattern-matching kernel fusion + memory planning")
+    p_cmp.add_argument("model", help="Path to .onnx model")
+    p_cmp.add_argument("--action", choices=["analyze", "compile", "benchmark"], default="analyze")
+    p_cmp.add_argument("--output", "-o", default=None)
+    p_cmp.add_argument("--no-fusion", action="store_true", help="Disable operator fusion")
+    p_cmp.add_argument("--no-memory-opt", action="store_true", help="Disable memory optimization")
+    p_cmp.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── slo-schedule ─────────────────────────────────────────
+    p_slo = sub.add_parser("slo-schedule", help="SLO-aware scheduler: admission control, priority tiers, fair queuing")
+    p_slo.add_argument("--action", choices=["configure", "stats", "demo"], default="demo")
+    p_slo.add_argument("--model", default=None, help="Path to .onnx model for demo")
+    p_slo.add_argument("--tiers", default="premium,standard,batch", help="Comma-separated tier names")
+    p_slo.add_argument("--max-capacity", type=int, default=100)
+
+    # ── prompt-cache ─────────────────────────────────────────
+    p_pc = sub.add_parser("prompt-cache", help="Semantic prompt cache: radix tree, LRU eviction, multi-tenant, analytics")
+    p_pc.add_argument("--action", choices=["stats", "clear", "warmup", "demo"], default="stats")
+    p_pc.add_argument("--cache-dir", default=None, help="Directory for persistent cache")
+    p_pc.add_argument("--max-entries", type=int, default=1000)
+    p_pc.add_argument("--max-memory-mb", type=int, default=1024)
+    p_pc.add_argument("--namespace", default="default")
+
+    # ── watermark ────────────────────────────────────────────
+    p_wm = sub.add_parser("watermark", help="AI text watermarking: Kirchenbauer scheme, multi-bit, detection, robustness")
+    p_wm.add_argument("--action", choices=["detect", "analyze", "configure"], default="detect")
+    p_wm.add_argument("--text", default=None, help="Text to analyze for watermark")
+    p_wm.add_argument("--text-file", default=None, help="File containing text to analyze")
+    p_wm.add_argument("--secret-key", default="isat-default", help="Watermark secret key")
+    p_wm.add_argument("--gamma", type=float, default=0.25, help="Green list fraction")
+    p_wm.add_argument("--delta", type=float, default=2.0, help="Logit bias strength")
+    p_wm.add_argument("--vocab-size", type=int, default=50257)
+
+    # ── token-econ ───────────────────────────────────────────
+    p_te = sub.add_parser("token-econ", help="Token economics: per-request metering, cost attribution, budget enforcement")
+    p_te.add_argument("--action", choices=["report", "budget", "export", "analyze"], default="report")
+    p_te.add_argument("--customer", default=None, help="Customer ID filter")
+    p_te.add_argument("--period", choices=["daily", "weekly", "monthly"], default="daily")
+    p_te.add_argument("--db-path", default=None, help="Path to usage database")
+    p_te.add_argument("--export-path", default=None, help="Export CSV path")
+    p_te.add_argument("--input-cost", type=float, default=0.01, help="Cost per 1K input tokens")
+    p_te.add_argument("--output-cost", type=float, default=0.03, help="Cost per 1K output tokens")
+
+    # ── session ──────────────────────────────────────────────
+    p_ses = sub.add_parser("session", help="Multi-turn session manager: KV persistence, incremental prefill, compaction")
+    p_ses.add_argument("--action", choices=["list", "create", "info", "delete", "compact", "demo"], default="list")
+    p_ses.add_argument("--model", default=None, help="Path to .onnx model")
+    p_ses.add_argument("--session-id", default=None, help="Session ID")
+    p_ses.add_argument("--max-sessions", type=int, default=100)
+    p_ses.add_argument("--max-context", type=int, default=4096)
+    p_ses.add_argument("--offload-dir", default=None, help="Directory for session disk offload")
+    p_ses.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── shadow ───────────────────────────────────────────────
+    p_shd = sub.add_parser("shadow", help="Shadow deployment: run two models side-by-side, compare quality, auto-promote")
+    p_shd.add_argument("production", help="Path to production .onnx model")
+    p_shd.add_argument("--shadow-model", required=True, help="Path to shadow .onnx model")
+    p_shd.add_argument("--action", choices=["run", "report", "promote", "rollback"], default="report")
+    p_shd.add_argument("--prompt", default=None, help="Single prompt to test")
+    p_shd.add_argument("--prompts-file", default=None, help="File with prompts (one per line)")
+    p_shd.add_argument("--min-samples", type=int, default=100)
+    p_shd.add_argument("--confidence", type=float, default=0.95)
+    p_shd.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── edge-split ───────────────────────────────────────────
+    p_es = sub.add_parser("edge-split", help="Edge-cloud hybrid inference: layer splitting, activation compression, privacy")
+    p_es.add_argument("model", help="Path to .onnx model")
+    p_es.add_argument("--action", choices=["analyze", "split", "run", "benchmark"], default="analyze")
+    p_es.add_argument("--bandwidth-mbps", type=float, default=100, help="Network bandwidth for transfer estimation")
+    p_es.add_argument("--edge-provider", default="CPUExecutionProvider")
+    p_es.add_argument("--cloud-provider", default="CUDAExecutionProvider")
+    p_es.add_argument("--split-layer", type=int, default=None, help="Manual split layer index")
+    p_es.add_argument("--compress", choices=["quantize", "topk", "random", "none"], default="quantize")
+    p_es.add_argument("--output-dir", default=None)
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -799,6 +943,21 @@ def main(argv: list[str] | None = None) -> int:
             "distill-train": _cmd_distill_train,
             "a2a": _cmd_a2a,
             "monitor-live": _cmd_monitor_live,
+            "kv-compress": _cmd_kv_compress,
+            "disaggregate": _cmd_disaggregate,
+            "moe": _cmd_moe,
+            "route": _cmd_route,
+            "multimodal": _cmd_multimodal,
+            "rag": _cmd_rag,
+            "longctx": _cmd_longctx,
+            "compile": _cmd_compile,
+            "slo-schedule": _cmd_slo_schedule,
+            "prompt-cache": _cmd_prompt_cache,
+            "watermark": _cmd_watermark,
+            "token-econ": _cmd_token_econ,
+            "session": _cmd_session,
+            "shadow": _cmd_shadow,
+            "edge-split": _cmd_edge_split,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -3263,6 +3422,340 @@ def _cmd_monitor_live(args) -> int:
         port=args.port,
         dashboard=not args.no_dashboard,
     )
+    return 0
+
+
+def _cmd_kv_compress(args) -> int:
+    from isat.kv_compress.compressor import compress_kv_cache
+    print(BANNER)
+    print(f"  Model      : {args.model}")
+    print(f"  Method     : {args.method}")
+    print(f"  Precision  : {args.precision}")
+    print()
+    result = compress_kv_cache(
+        args.model, method=args.method, precision=args.precision,
+        budget_ratio=args.budget_ratio, window_size=args.window_size,
+        sink_size=args.sink_size, provider=args.provider,
+    )
+    print(f"  Original memory    : {result.original_memory_mb:.1f} MB")
+    print(f"  Compressed memory  : {result.compressed_memory_mb:.1f} MB")
+    print(f"  Compression ratio  : {result.compression_ratio:.2f}x")
+    print(f"  Tokens evicted     : {result.tokens_evicted}")
+    print(f"  Method used        : {result.method}")
+    return 0
+
+
+def _cmd_disaggregate(args) -> int:
+    from isat.disaggregate.controller import disaggregate_serve
+    print(BANNER)
+    print(f"  Model             : {args.model}")
+    print(f"  Prefill provider  : {args.prefill_provider}")
+    print(f"  Decode provider   : {args.decode_provider}")
+    print()
+    result = disaggregate_serve(
+        args.model, prompt=args.prompt,
+        prefill_providers=[args.prefill_provider],
+        decode_providers=[args.decode_provider],
+        max_tokens=args.max_tokens, benchmark=args.benchmark,
+    )
+    if hasattr(result, 'prefill_time_ms'):
+        print(f"  Prefill time  : {result.prefill_time_ms:.1f} ms")
+        print(f"  Decode time   : {result.decode_time_ms:.1f} ms")
+        print(f"  Transfer time : {result.transfer_time_ms:.1f} ms")
+        print(f"  Total time    : {result.total_time_ms:.1f} ms")
+    return 0
+
+
+def _cmd_moe(args) -> int:
+    from isat.moe_runtime.router import moe_serve
+    print(BANNER)
+    print(f"  Model      : {args.model}")
+    print(f"  Action     : {args.action}")
+    print(f"  Experts    : {args.num_experts}")
+    print(f"  Top-K      : {args.top_k}")
+    print()
+    result = moe_serve(args.model, action=args.action, num_experts=args.num_experts,
+                        top_k=args.top_k, provider=args.provider)
+    if hasattr(result, 'num_experts'):
+        print(f"  Experts detected   : {result.num_experts}")
+        print(f"  Active params      : {getattr(result, 'active_params', 'N/A')}")
+        print(f"  Activation ratio   : {getattr(result, 'activation_ratio', 'N/A')}")
+    return 0
+
+
+def _cmd_route(args) -> int:
+    from isat.model_router.router import route_inference
+    print(BANNER)
+    print(f"  Models     : {', '.join(args.models)}")
+    print(f"  Strategy   : {args.strategy}")
+    print()
+    result = route_inference(
+        args.models, args.prompt, strategy=args.strategy,
+        confidence_threshold=args.confidence_threshold,
+        max_tokens=args.max_tokens, provider=args.provider,
+    )
+    print(f"  Selected model : {result.selected_model}")
+    print(f"  Confidence     : {result.confidence:.3f}")
+    print(f"  Escalations    : {result.escalations}")
+    print(f"  Latency        : {result.latency_ms:.1f} ms")
+    print(f"  Cost           : ${result.cost:.4f}")
+    return 0
+
+
+def _cmd_multimodal(args) -> int:
+    from isat.multimodal.pipeline import multimodal_generate
+    print(BANNER)
+    print(f"  LLM        : {args.llm}")
+    print(f"  Encoders   : {args.encoder or '(none)'}")
+    print()
+    inputs = []
+    if args.text:
+        inputs.append({"modality": "text", "data": args.text})
+    if args.image:
+        inputs.append({"modality": "vision", "data": args.image})
+    if args.audio:
+        inputs.append({"modality": "audio", "data": args.audio})
+    if not inputs:
+        inputs.append({"modality": "text", "data": "Describe what you see."})
+    result = multimodal_generate(
+        args.llm, inputs, encoders=args.encoder or None,
+        max_tokens=args.max_tokens, provider=args.provider,
+    )
+    print(f"  Modalities  : {', '.join(result.modalities_used)}")
+    print(f"  Total time  : {result.total_time_ms:.0f} ms")
+    return 0
+
+
+def _cmd_rag(args) -> int:
+    from isat.rag_engine.engine import rag_query
+    print(BANNER)
+    print(f"  Action     : {args.action}")
+    print()
+    if args.action == "ingest":
+        if not args.documents:
+            print("  ERROR: --documents required for ingest")
+            return 1
+        result = rag_query(args.documents, query=None, llm_path=args.llm,
+                           embedding_model=args.embedding_model,
+                           chunk_size=args.chunk_size, index_path=args.index_path,
+                           action="ingest")
+        print(f"  Ingested {len(args.documents)} documents")
+        return 0
+    if not args.query:
+        print("  ERROR: --query required")
+        return 1
+    result = rag_query(args.documents, args.query, llm_path=args.llm,
+                       embedding_model=args.embedding_model,
+                       top_k=args.top_k, method=args.method,
+                       index_path=args.index_path)
+    print(f"  Sources    : {result.num_chunks_retrieved} retrieved, {result.num_chunks_used} used")
+    print(f"  Retrieval  : {result.retrieval_time_ms:.0f} ms")
+    print(f"  Generation : {result.generation_time_ms:.0f} ms")
+    print(f"\n  Answer:\n  {result.answer}")
+    return 0
+
+
+def _cmd_longctx(args) -> int:
+    from isat.long_context.engine import long_context_generate
+    print(BANNER)
+    print(f"  Model      : {args.model}")
+    print(f"  Action     : {args.action}")
+    print()
+    result = long_context_generate(
+        args.model, action=args.action,
+        target_context=args.target_context,
+        method=args.method, window_size=args.window_size,
+        output_path=args.output, provider=args.provider,
+    )
+    if hasattr(result, 'native_context'):
+        print(f"  Native context     : {result.native_context}")
+        print(f"  RoPE type          : {result.rope_type}")
+        print(f"  Max extensible     : {result.estimated_max_context}")
+        print(f"  Recommended method : {result.recommended_method}")
+    return 0
+
+
+def _cmd_compile(args) -> int:
+    from isat.inference_compiler.compiler import compile_model
+    print(BANNER)
+    print(f"  Model      : {args.model}")
+    print(f"  Action     : {args.action}")
+    print()
+    result = compile_model(
+        args.model, action=args.action, output_path=args.output,
+        enable_fusion=not args.no_fusion,
+        enable_memory_opt=not args.no_memory_opt,
+        provider=args.provider,
+    )
+    if hasattr(result, 'total_ops'):
+        print(f"  Total ops          : {result.total_ops}")
+        print(f"  Fusable ops        : {result.fusable_ops}")
+        print(f"  Patterns found     : {len(result.fusion_patterns_found)}")
+        for p in result.fusion_patterns_found[:5]:
+            print(f"    {p.get('name', p)}: {p.get('count', '')}")
+        print(f"  Est. speedup       : {result.estimated_speedup:.2f}x")
+        print(f"  Memory savings     : {result.memory_savings_pct:.1f}%")
+    elif hasattr(result, 'fusions_applied'):
+        print(f"  Fusions applied    : {result.fusions_applied}")
+        print(f"  Speedup            : {result.speedup:.2f}x")
+        print(f"  Output             : {result.output_path}")
+    return 0
+
+
+def _cmd_slo_schedule(args) -> int:
+    from isat.slo_scheduler.scheduler import slo_schedule
+    print(BANNER)
+    print(f"  Action     : {args.action}")
+    print(f"  Tiers      : {args.tiers}")
+    print()
+    result = slo_schedule(
+        action=args.action, model_path=args.model,
+        tiers=args.tiers.split(","), max_capacity=args.max_capacity,
+    )
+    if hasattr(result, 'slo_hit_rate'):
+        print(f"  SLO hit rate       : {result.slo_hit_rate:.1%}")
+        print(f"  Total requests     : {result.total_requests}")
+        print(f"  Avg queue depth    : {result.avg_queue_depth:.1f}")
+    return 0
+
+
+def _cmd_prompt_cache(args) -> int:
+    from isat.prompt_cache.cache import prompt_cache_manage
+    print(BANNER)
+    print(f"  Action     : {args.action}")
+    print()
+    result = prompt_cache_manage(
+        action=args.action, cache_dir=args.cache_dir,
+        max_entries=args.max_entries, max_memory_mb=args.max_memory_mb,
+        namespace=args.namespace,
+    )
+    if hasattr(result, 'hit_rate'):
+        print(f"  Entries    : {result.total_entries}")
+        print(f"  Memory     : {result.memory_mb:.1f} MB")
+        print(f"  Hit rate   : {result.hit_rate:.1%}")
+        print(f"  Savings    : {result.cost_savings_estimate:.2f}")
+    return 0
+
+
+def _cmd_watermark(args) -> int:
+    from isat.watermark.marker import watermark_text
+    print(BANNER)
+    print(f"  Action     : {args.action}")
+    print()
+    text = args.text
+    if args.text_file and Path(args.text_file).exists():
+        text = Path(args.text_file).read_text()
+    if not text:
+        print("  ERROR: --text or --text-file required")
+        return 1
+    result = watermark_text(
+        action=args.action, text=text,
+        secret_key=args.secret_key, gamma=args.gamma,
+        delta=args.delta, vocab_size=args.vocab_size,
+    )
+    if hasattr(result, 'z_score'):
+        print(f"  Z-score            : {result.z_score:.2f}")
+        print(f"  P-value            : {result.p_value:.6f}")
+        print(f"  Watermarked        : {result.is_watermarked}")
+        print(f"  Green fraction     : {result.green_fraction:.3f}")
+        print(f"  Confidence         : {result.confidence:.1%}")
+    return 0
+
+
+def _cmd_token_econ(args) -> int:
+    from isat.token_economics.metering import token_economics
+    print(BANNER)
+    print(f"  Action     : {args.action}")
+    print()
+    result = token_economics(
+        action=args.action, customer_id=args.customer,
+        period=args.period, db_path=args.db_path,
+        export_path=args.export_path,
+        input_cost_per_1k=args.input_cost,
+        output_cost_per_1k=args.output_cost,
+    )
+    if hasattr(result, 'total_requests'):
+        print(f"  Total requests     : {result.total_requests}")
+        print(f"  Total cost         : ${result.total_cost:.4f}")
+        print(f"  Input tokens       : {result.total_input_tokens:,}")
+        print(f"  Output tokens      : {result.total_output_tokens:,}")
+    return 0
+
+
+def _cmd_session(args) -> int:
+    from isat.session_manager.manager import session_manage
+    print(BANNER)
+    print(f"  Action     : {args.action}")
+    print()
+    result = session_manage(
+        action=args.action, model_path=args.model,
+        session_id=args.session_id, max_sessions=args.max_sessions,
+        max_context=args.max_context, offload_dir=args.offload_dir,
+        provider=args.provider,
+    )
+    if isinstance(result, list):
+        if not result:
+            print("  No active sessions")
+        for s in result:
+            print(f"  {s}")
+    elif hasattr(result, 'session_id'):
+        print(f"  Session    : {result.session_id}")
+        print(f"  Turns      : {result.turn_count}")
+        print(f"  Tokens     : {result.total_tokens}")
+        print(f"  Memory     : {result.memory_mb:.1f} MB")
+    return 0
+
+
+def _cmd_shadow(args) -> int:
+    from isat.shadow_deploy.shadow import shadow_deploy
+    print(BANNER)
+    print(f"  Production : {args.production}")
+    print(f"  Shadow     : {args.shadow_model}")
+    print(f"  Action     : {args.action}")
+    print()
+    result = shadow_deploy(
+        args.production, args.shadow_model,
+        action=args.action, prompt=args.prompt,
+        prompts_file=args.prompts_file,
+        min_samples=args.min_samples,
+        confidence=args.confidence,
+        provider=args.provider,
+    )
+    if hasattr(result, 'num_samples'):
+        print(f"  Samples            : {result.num_samples}")
+        print(f"  Duration           : {result.duration_hours:.1f}h")
+        print(f"  P-value            : {result.p_value:.4f}")
+        print(f"  Promotion ready    : {result.promotion_ready}")
+        print(f"  Recommendation     : {result.recommendation}")
+    return 0
+
+
+def _cmd_edge_split(args) -> int:
+    from isat.edge_split.splitter import edge_split
+    print(BANNER)
+    print(f"  Model      : {args.model}")
+    print(f"  Action     : {args.action}")
+    print(f"  Bandwidth  : {args.bandwidth_mbps} Mbps")
+    print()
+    result = edge_split(
+        args.model, action=args.action,
+        bandwidth_mbps=args.bandwidth_mbps,
+        edge_provider=args.edge_provider,
+        cloud_provider=args.cloud_provider,
+        split_layer=args.split_layer,
+        compress_method=args.compress,
+        output_dir=args.output_dir,
+    )
+    if hasattr(result, 'optimal_split'):
+        split = result.optimal_split
+        print(f"  Optimal split      : layer {split.layer_idx}")
+        print(f"  Activation size    : {split.activation_size_mb:.2f} MB")
+        print(f"  Edge FLOPS         : {split.edge_flops:.0f}")
+        print(f"  Cloud FLOPS        : {split.cloud_flops:.0f}")
+        print(f"  Est. transfer      : {split.estimated_transfer_ms:.1f} ms")
+        print(f"  Est. total latency : {split.estimated_total_latency_ms:.1f} ms")
+        print(f"  Edge layers        : {result.edge_layers}")
+        print(f"  Cloud layers       : {result.cloud_layers}")
     return 0
 
 

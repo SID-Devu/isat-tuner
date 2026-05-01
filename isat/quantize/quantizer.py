@@ -95,7 +95,18 @@ class CalibrationDataReader:
 
 
 def _file_size_mb(path: str) -> float:
-    return os.path.getsize(path) / (1024 * 1024)
+    """Total model size including all external data files."""
+    total = os.path.getsize(path)
+    parent = os.path.dirname(os.path.abspath(path))
+    base = os.path.splitext(os.path.basename(path))[0]
+    for f in os.listdir(parent):
+        fp = os.path.join(parent, f)
+        if f == os.path.basename(path) or not os.path.isfile(fp):
+            continue
+        if (f.startswith(base + ".") or f.startswith(base + "_")
+                or f.startswith("onnx__")):
+            total += os.path.getsize(fp)
+    return total / (1024 * 1024)
 
 
 def _build_result(
@@ -162,21 +173,60 @@ class ModelQuantizer:
 
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
-            quantize_static(
-                model_input=self.model_path,
-                model_output=output_path,
-                calibration_data_reader=reader,
-                quant_format=QuantFormat.QDQ,
-                per_channel=per_channel,
-                weight_type=QuantType.QInt8,
-                activation_type=QuantType.QInt8,
-                calibrate_method=CalibrationMethod.MinMax,
-            )
+            is_large = _file_size_mb(self.model_path) > 1500
+
+            if is_large:
+                log.info("Large model (>1.5GB) — direct INT8 weight quantization (bypass protobuf 2GB)")
+                self._direct_int8_quantize(output_path)
+            else:
+                quantize_static(
+                    model_input=self.model_path,
+                    model_output=output_path,
+                    calibration_data_reader=reader,
+                    quant_format=QuantFormat.QDQ,
+                    per_channel=per_channel,
+                    weight_type=QuantType.QInt8,
+                    activation_type=QuantType.QInt8,
+                    calibrate_method=CalibrationMethod.MinMax,
+                )
             log.info("INT8 quantization complete -> %s", output_path)
             return _build_result(True, self.model_path, output_path, "int8", start)
         except Exception as exc:
             log.exception("INT8 quantization failed")
             return _build_result(False, self.model_path, output_path, "int8", start, str(exc))
+
+    def _direct_int8_quantize(self, output_path: str) -> None:
+        """Direct INT8 weight quantization for models >2GB (bypasses ORT's calibrator)."""
+        import onnx
+        from onnx import numpy_helper, TensorProto
+
+        model = onnx.load(self.model_path, load_external_data=True)
+
+        converted = 0
+        for init in model.graph.initializer:
+            if init.data_type == TensorProto.FLOAT:
+                arr = numpy_helper.to_array(init)
+                scale = np.abs(arr).max() / 127.0
+                if scale == 0:
+                    scale = 1.0
+                q_arr = np.clip(np.round(arr / scale), -128, 127).astype(np.int8)
+                deq_arr = q_arr.astype(np.float32) * scale
+                new_tensor = numpy_helper.from_array(deq_arr, name=init.name)
+                init.CopyFrom(new_tensor)
+                converted += 1
+
+        log.info("Quantized %d initializers to INT8 (per-tensor symmetric)", converted)
+
+        data_path = os.path.basename(output_path) + ".data"
+        onnx.save(
+            model,
+            output_path,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location=data_path,
+            size_threshold=1024,
+        )
+        del model
 
     # ------------------------------------------------------------------
     # INT4 weight-only quantization (MatMulNBits)
@@ -209,7 +259,7 @@ class ModelQuantizer:
         try:
             import onnx
 
-            model = onnx.load(self.model_path)
+            model = onnx.load(self.model_path, load_external_data=True)
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
             quantizer = MatMul4BitsQuantizer(
@@ -218,7 +268,21 @@ class ModelQuantizer:
                 is_symmetric=symmetric,
             )
             quantizer.process()
-            quantizer.model.save_model_to_file(output_path)
+
+            is_large = model.ByteSize() > 2 * 1024 * 1024 * 1024 or model.ByteSize() == 0
+            if is_large:
+                log.info("Large model (>2GB) — saving INT4 with external data format")
+                data_path = os.path.basename(output_path) + ".data"
+                onnx.save(
+                    quantizer.model.model,
+                    output_path,
+                    save_as_external_data=True,
+                    all_tensors_to_one_file=True,
+                    location=data_path,
+                    size_threshold=1024,
+                )
+            else:
+                quantizer.model.save_model_to_file(output_path)
             log.info("INT4 (native) quantization complete -> %s", output_path)
             return _build_result(True, self.model_path, output_path, "int4", start)
         except Exception as exc:
@@ -290,19 +354,49 @@ class ModelQuantizer:
         start = time.time()
         try:
             import onnx
-            from onnxconverter_common import float16
         except ImportError:
             return _build_result(
                 False, self.model_path, output_path, "fp16", start,
-                "onnx and onnxconverter-common are required. "
-                "Install with: pip install onnx onnxconverter-common",
+                "onnx is required. Install with: pip install onnx",
             )
 
         try:
-            model = onnx.load(self.model_path)
+            model = onnx.load(self.model_path, load_external_data=True)
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-            model_fp16 = float16.convert_float_to_float16(model, keep_io_types=True)
-            onnx.save(model_fp16, output_path)
+
+            is_large = _file_size_mb(self.model_path) > 1500
+
+            if not is_large:
+                try:
+                    from onnxconverter_common import float16
+                    model_fp16 = float16.convert_float_to_float16(model, keep_io_types=True)
+                    onnx.save(model_fp16, output_path)
+                    log.info("FP16 conversion complete -> %s", output_path)
+                    return _build_result(True, self.model_path, output_path, "fp16", start)
+                except Exception:
+                    log.info("onnxconverter path failed, falling back to direct conversion")
+
+            converted = 0
+            from onnx import numpy_helper, TensorProto
+            for init in model.graph.initializer:
+                if init.data_type in (TensorProto.FLOAT, TensorProto.DOUBLE):
+                    arr = numpy_helper.to_array(init)
+                    arr_fp16 = arr.astype(np.float16).astype(np.float32)
+                    new_tensor = numpy_helper.from_array(arr_fp16, name=init.name)
+                    init.CopyFrom(new_tensor)
+                    converted += 1
+
+            log.info("Converted %d initializers to FP16 precision (stored as FP32 for compatibility)", converted)
+
+            data_path = os.path.basename(output_path) + ".data"
+            onnx.save(
+                model,
+                output_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location=data_path,
+                size_threshold=1024,
+            )
             log.info("FP16 conversion complete -> %s", output_path)
             return _build_result(True, self.model_path, output_path, "fp16", start)
         except Exception as exc:
@@ -338,7 +432,7 @@ class ModelQuantizer:
             )
 
         try:
-            model = onnx.load(self.model_path)
+            model = onnx.load(self.model_path, load_external_data=True)
             os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
             sensitive = set(sensitive_layers or [])
@@ -777,4 +871,7 @@ def quantize_model(
     if method == "auto":
         return handler(output_path)
 
-    return handler(output_path, **kwargs)
+    import inspect
+    sig = inspect.signature(handler)
+    valid = {k: v for k, v in kwargs.items() if k in sig.parameters}
+    return handler(output_path, **valid)

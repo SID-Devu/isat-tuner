@@ -23,6 +23,23 @@ except ImportError:
     numpy_helper = None  # type: ignore[assignment]
 
 
+def _load_session_from_model(model, providers):
+    """Load ORT session from an in-memory ONNX model, handling >2GB models."""
+    try:
+        return ort.InferenceSession(model.SerializeToString(), providers=providers)
+    except Exception:
+        import tempfile, os
+        tmp = tempfile.NamedTemporaryFile(suffix=".onnx", delete=False, dir="/tmp")
+        onnx.save(
+            model, tmp.name,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location=os.path.basename(tmp.name) + ".data",
+            size_threshold=1024,
+        )
+        return ort.InferenceSession(tmp.name, providers=providers)
+
+
 @dataclass
 class ExplainReport:
     model_path: str
@@ -167,7 +184,7 @@ class ModelExplainer:
             model.graph.output.append(value_info)
 
         providers = ort.get_available_providers()
-        sess = ort.InferenceSession(model.SerializeToString(), providers=providers)
+        sess = _load_session_from_model(model, providers)
         out_names = [o.name for o in sess.get_outputs()]
         results = sess.run(out_names, inputs)
 
@@ -267,7 +284,7 @@ class ModelExplainer:
             model.graph.output.append(value_info)
 
         providers = ort.get_available_providers()
-        sess = ort.InferenceSession(model.SerializeToString(), providers=providers)
+        sess = _load_session_from_model(model, providers)
         out_names = [o.name for o in sess.get_outputs()]
         results = sess.run(out_names, inputs)
 

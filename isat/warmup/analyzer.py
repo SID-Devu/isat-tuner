@@ -127,8 +127,8 @@ class WarmupAnalyzer:
             window = lats[i - w:i]
             mean = np.mean(window)
             if mean > 0 and np.std(window) / mean < self.cv_threshold:
-                return i - w
-        return len(lats) - w
+                return max(0, i - w)
+        return max(0, len(lats) - w)
 
     def _find_jit_boundary(self, lats: np.ndarray) -> int:
         """Find where per-iteration latency stops having sharp drops."""

@@ -102,6 +102,7 @@ class ModelHub:
         if not filename.endswith(".onnx"):
             filename += ".onnx"
 
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
         cached_path = self.cache_dir / filename
         output_path = Path(output_dir) / filename
 

@@ -24,6 +24,23 @@ def _run(cmd: list[str], timeout: int = 10) -> Optional[str]:
         return None
 
 
+def _gpu_card_path() -> Optional[Path]:
+    """Find the sysfs path for the active AMD GPU (card0, card1, etc.)."""
+    drm = Path("/sys/class/drm")
+    if not drm.exists():
+        return None
+    for card in sorted(drm.glob("card[0-9]*")):
+        if not (card / "device").exists():
+            continue
+        vendor = _read_sysfs(str(card / "device" / "vendor"))
+        if vendor == "0x1002":  # AMD
+            return card
+    for card in sorted(drm.glob("card[0-9]*")):
+        if (card / "device").exists():
+            return card
+    return None
+
+
 def gpu_temp_edge() -> Optional[float]:
     """Read GPU edge temperature (Celsius) from hwmon."""
     for hwmon in sorted(Path("/sys/class/drm").glob("card*/device/hwmon/hwmon*")):
@@ -44,18 +61,27 @@ def gpu_power_watts() -> Optional[float]:
 
 
 def gpu_vram_used_mb() -> Optional[float]:
-    val = _read_sysfs("/sys/class/drm/card0/device/mem_info_vram_used")
+    card = _gpu_card_path()
+    if not card:
+        return None
+    val = _read_sysfs(str(card / "device" / "mem_info_vram_used"))
     return int(val) / (1024 * 1024) if val else None
 
 
 def gpu_gtt_used_mb() -> Optional[float]:
-    val = _read_sysfs("/sys/class/drm/card0/device/mem_info_gtt_used")
+    card = _gpu_card_path()
+    if not card:
+        return None
+    val = _read_sysfs(str(card / "device" / "mem_info_gtt_used"))
     return int(val) / (1024 * 1024) if val else None
 
 
 def gpu_sclk_mhz() -> Optional[int]:
     """Current shader clock from sysfs."""
-    val = _read_sysfs("/sys/class/drm/card0/device/pp_dpm_sclk")
+    card = _gpu_card_path()
+    if not card:
+        return None
+    val = _read_sysfs(str(card / "device" / "pp_dpm_sclk"))
     if val:
         for line in val.splitlines():
             if "*" in line:

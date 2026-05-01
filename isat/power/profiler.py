@@ -146,38 +146,59 @@ class PowerProfiler:
             temperature_samples=temp_samples,
         )
 
+    @staticmethod
+    def _find_hwmon() -> Optional[Path]:
+        """Locate the amdgpu hwmon directory dynamically."""
+        from isat.utils.sysfs import _gpu_card_path
+        card = _gpu_card_path()
+        if card:
+            hwmon_dir = card / "device" / "hwmon"
+            if hwmon_dir.exists():
+                for hwmon in sorted(hwmon_dir.iterdir()):
+                    if (hwmon / "name").exists():
+                        name = hwmon / "name"
+                        if "amdgpu" in name.read_text().strip():
+                            return hwmon
+                for hwmon in sorted(hwmon_dir.iterdir()):
+                    return hwmon
+        for hwmon in sorted(Path("/sys/class/hwmon").glob("hwmon*")):
+            try:
+                if "amdgpu" in (hwmon / "name").read_text().strip():
+                    return hwmon
+            except OSError:
+                continue
+        return None
+
     def _read_power(self) -> Optional[float]:
         try:
-            path = Path("/sys/class/drm/card0/device/hwmon")
-            if path.exists():
-                for hwmon in path.iterdir():
-                    power_file = hwmon / "power1_average"
-                    if power_file.exists():
-                        return int(power_file.read_text().strip()) / 1_000_000
+            hwmon = self._find_hwmon()
+            if hwmon:
+                for fname in ("power1_average", "power1_input"):
+                    f = hwmon / fname
+                    if f.exists():
+                        return int(f.read_text().strip()) / 1_000_000
         except (OSError, ValueError):
             pass
         return None
 
     def _read_temp(self) -> Optional[float]:
         try:
-            path = Path("/sys/class/drm/card0/device/hwmon")
-            if path.exists():
-                for hwmon in path.iterdir():
-                    temp_file = hwmon / "temp1_input"
-                    if temp_file.exists():
-                        return int(temp_file.read_text().strip()) / 1000
+            hwmon = self._find_hwmon()
+            if hwmon:
+                temp_file = hwmon / "temp1_input"
+                if temp_file.exists():
+                    return int(temp_file.read_text().strip()) / 1000
         except (OSError, ValueError):
             pass
         return None
 
     def _read_tdp(self) -> float:
         try:
-            path = Path("/sys/class/drm/card0/device/hwmon")
-            if path.exists():
-                for hwmon in path.iterdir():
-                    cap_file = hwmon / "power1_cap"
-                    if cap_file.exists():
-                        return int(cap_file.read_text().strip()) / 1_000_000
+            hwmon = self._find_hwmon()
+            if hwmon:
+                cap_file = hwmon / "power1_cap"
+                if cap_file.exists():
+                    return int(cap_file.read_text().strip()) / 1_000_000
         except (OSError, ValueError):
             pass
         return 150.0

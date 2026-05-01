@@ -93,13 +93,27 @@ class CompatResult:
         return "\n".join(lines)
 
     def _best_provider(self) -> str:
-        best = ""
-        best_pct = 0
-        for prov, info in self.provider_results.items():
-            if info["supported_pct"] > best_pct:
-                best_pct = info["supported_pct"]
-                best = prov
-        return best
+        gpu_priority = [
+            "MIGraphXExecutionProvider",
+            "CUDAExecutionProvider",
+            "TensorrtExecutionProvider",
+            "OpenVINOExecutionProvider",
+            "QNNExecutionProvider",
+            "CPUExecutionProvider",
+        ]
+
+        def _rank(prov: str, info: dict) -> tuple:
+            pct = info["supported_pct"]
+            fp16 = 1 if info.get("fp16") else 0
+            int8 = 1 if info.get("int8") else 0
+            try:
+                prio = len(gpu_priority) - gpu_priority.index(prov)
+            except ValueError:
+                prio = 0
+            return (pct, fp16 + int8, prio)
+
+        best = max(self.provider_results.items(), key=lambda kv: _rank(kv[0], kv[1]))
+        return best[0]
 
 
 class CompatMatrix:

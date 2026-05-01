@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isat-tuner"
-version = "0.8.5"
-description = "ISAT: Inference Stack Auto-Tuner — CLI toolkit to auto-tune, profile, prune, deploy, and monitor ONNX models on any GPU."
+version = "0.9.1"
+description = "ISAT: Inference Stack Auto-Tuner — CLI toolkit to convert, auto-tune, profile, prune, deploy, and monitor ONNX models on any GPU."
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
@@ -16,7 +16,7 @@ maintainers = [
     {name = "Sudheer Ibrahim Daniel Devu", email = "sudheerdevu4work@gmail.com"},
 ]
 keywords = [
-    "onnx", "inference", "optimization", "auto-tuning", "benchmarking",
+    "onnx", "model-conversion", "inference", "optimization", "auto-tuning", "benchmarking",
     "gpu", "rocm", "cuda", "migraphx", "tensorrt", "openvino",
     "performance", "latency", "throughput", "mlops", "model-optimization",
     "pruning", "quantization", "distillation", "profiling", "deployment",
@@ -56,6 +56,10 @@ rocm = ["onnxruntime-rocm"]
 migraphx = ["onnxruntime-migraphx"]
 cuda = ["onnxruntime-gpu"]
 quantize = ["onnxruntime", "onnxsim"]
+convert = ["optimum[exporters]", "tf2onnx", "onnxsim", "safetensors"]
+convert-hf = ["optimum[exporters]"]
+convert-tf = ["tf2onnx", "tensorflow"]
+convert-pt = ["torch"]
 server = ["fastapi>=0.100.0", "uvicorn[standard]>=0.20.0", "pydantic>=2.0"]
 metrics = ["prometheus-client>=0.20.0"]
 bayesian = ["scipy>=1.10.0"]

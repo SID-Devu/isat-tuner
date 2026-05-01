@@ -316,12 +316,27 @@ def create_session():
 def _build_inputs(session, use_zeros=False):
     """Build test inputs. Use zeros for models with index-based ops (GatherND, ScatterND)."""
     import numpy as np
+    _DIM_DEFAULTS = {{
+        "batch_size": 1, "batch": 1,
+        "num_channels": 3, "channels": 3, "channel": 3,
+        "height": 224, "width": 224,
+        "sequence_length": 16, "seq_len": 16, "seq_length": 16, "length": 16,
+        "num_heads": 12, "head_dim": 64,
+        "image_batch_size": 1, "text_batch_size": 1,
+        "past_sequence_length": 0,
+    }}
     inputs = {{}}
     for inp in session.get_inputs():
         shape = []
         for dim in inp.shape:
             if isinstance(dim, int) and dim > 0:
                 shape.append(dim)
+            elif isinstance(dim, str) and dim in _DIM_DEFAULTS:
+                shape.append(_DIM_DEFAULTS[dim])
+            elif isinstance(dim, str) and "+" in dim:
+                parts = [p.strip() for p in dim.split("+")]
+                total = sum(_DIM_DEFAULTS.get(p, 1) for p in parts)
+                shape.append(max(total, 1))
             else:
                 shape.append(1)
         dtype_map = {{

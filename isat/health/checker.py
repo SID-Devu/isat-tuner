@@ -163,7 +163,9 @@ class HealthChecker:
             return HealthCheck("GPU processes", "healthy", "Could not check (assumed OK)")
 
     def _check_gpu_clocks(self) -> HealthCheck:
-        sclk_path = "/sys/class/drm/card0/device/pp_dpm_sclk"
+        from isat.utils.sysfs import _gpu_card_path
+        card = _gpu_card_path()
+        sclk_path = str(card / "device" / "pp_dpm_sclk") if card else "/sys/class/drm/card0/device/pp_dpm_sclk"
         try:
             content = Path(sclk_path).read_text()
             lines = content.strip().splitlines()

@@ -474,6 +474,15 @@ def main(argv: list[str] | None = None) -> int:
     p_cg.add_argument("model", help="Path to .onnx model")
     p_cg.add_argument("--output-dir", default="isat_cpp", help="Output directory for C++ files")
 
+    # ── onnx (universal converter) ────────────────────────────
+    p_onnx = sub.add_parser("onnx", help="Convert any model to ONNX (PyTorch, TF, HuggingFace, JAX, TFLite, SafeTensors)")
+    p_onnx.add_argument("input", help="Model path, directory, or HuggingFace model ID")
+    p_onnx.add_argument("--output", "-o", default=".", help="Output directory (default: current dir)")
+    p_onnx.add_argument("--input-shape", default=None, help="Input shape for raw checkpoints (e.g. 1,3,224,224)")
+    p_onnx.add_argument("--opset", type=int, default=17, help="ONNX opset version (default: 17)")
+    p_onnx.add_argument("--no-tune", action="store_true", help="Skip auto best-config after conversion")
+    p_onnx.add_argument("--simplify", action="store_true", help="Simplify ONNX graph with onnxsim after conversion")
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -558,6 +567,7 @@ def main(argv: list[str] | None = None) -> int:
             "drift": _cmd_drift,
             "weight-sharing": _cmd_weight_sharing,
             "codegen": _cmd_codegen,
+            "onnx": _cmd_onnx,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -2160,6 +2170,80 @@ def _cmd_codegen(args) -> int:
     print(f"{'='*65}")
     print(result.summary())
     print(f"{'='*65}\n")
+    return 0
+
+
+def _cmd_onnx(args) -> int:
+    from isat.converter.engine import convert, detect_format
+
+    print(BANNER)
+
+    fmt = detect_format(args.input)
+    print(f"  Converting : {args.input}")
+    print(f"  Format     : {fmt.name} (auto-detected)")
+    print(f"  Opset      : {args.opset}")
+    if args.input_shape:
+        print(f"  Input shape: {args.input_shape}")
+    print()
+
+    print("  [1/3] Converting to ONNX...")
+    result = convert(
+        input_path=args.input,
+        output_dir=args.output,
+        opset=args.opset,
+        input_shape=args.input_shape,
+        simplify=args.simplify,
+    )
+
+    if not result.success:
+        print(f"\n  CONVERSION FAILED")
+        print(f"  {result.error}")
+        return 1
+
+    print(f"         OK ({result.elapsed_s:.1f}s)")
+    print()
+
+    print("  [2/3] Validating ONNX model...")
+    print(f"         OK (opset={result.opset}, {result.num_nodes} nodes, {result.size_mb:.1f} MB)")
+    print()
+
+    print(f"  {'='*65}")
+    print(f"  CONVERSION RESULT")
+    print(f"  {'='*65}")
+    print(result.summary())
+    print(f"  {'='*65}")
+    print()
+
+    if args.no_tune:
+        return 0
+
+    onnx_path = result.onnx_path
+    if not Path(onnx_path).exists():
+        return 0
+
+    print("  [3/3] Detecting best configuration...")
+    print()
+
+    try:
+        from isat.auto_detect.detector import detect_hardware
+        from isat.auto_detect.recommender import format_report, generate_recommendations
+        from isat.auto_detect.script_gen import save_script
+
+        hw_profile = detect_hardware()
+        report = generate_recommendations(hw_profile, onnx_path)
+        print(format_report(report))
+
+        output_dir = str(Path(onnx_path).parent)
+        script_path = save_script(hw_profile, onnx_path, output_dir)
+        print()
+        print(f"  INFERENCE SCRIPT: {script_path}")
+        print(f"  Run it directly : python3 {script_path}")
+        print()
+    except Exception as e:
+        print(f"  Best-config detection failed: {e}")
+        print(f"  You can still run: isat tune {onnx_path}")
+        print()
+
     return 0
 
 

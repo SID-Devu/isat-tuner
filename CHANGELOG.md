@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.9.1] - 2026-05-01
+
+### Added
+- **Universal Model Converter (`isat onnx`)**: Convert any model format (PyTorch, TensorFlow,
+  JAX, HuggingFace, TFLite, SafeTensors) to ONNX with a single command — then auto-detect
+  hardware and generate optimized inference scripts
+- **Multi-modal export support**: CLIP, BLIP, DETR and other multi-input models export correctly
+  via `inspect.signature`-based positional arg mapping with None-padding for gaps
+- **Intelligent symbolic dimension defaults**: Generated inference scripts use smart defaults
+  for ONNX symbolic dims (`num_channels`→3, `height`→224, `sequence_length`→16, etc.)
+- **Robust HuggingFace ID detection**: Model names with dots (e.g. `facebook/opt-1.3b`,
+  `meta-llama/Llama-3.1-8B`) are correctly identified as HuggingFace IDs
+
+### Fixed
+- **torch.onnx.export PyTorch 2.9+ compatibility**: Disabled dynamo by default (`dynamo=False`)
+  and disabled KV cache (`use_cache=False`) for clean transformer export
+- **Multi-input model export**: Models with multiple inputs (tokenizer + image) now correctly
+  map to positional args via forward() signature inspection instead of failing with
+  "got multiple values for argument" errors
+- **Symbolic dim crash in generated scripts**: `_build_inputs()` no longer defaults all
+  symbolic dimensions to 1 — uses a dimension-name-aware mapping for correct tensor shapes
+- **HuggingFace ID format detection**: `detect_format()` no longer misclassifies model names
+  containing dots (`.3b`, `.1B`, `.5-large`) as unknown file extensions
+
+### Tested (6 HuggingFace models validated E2E)
+| Model | Category | Params | ONNX Size | check_model | Inference | Script |
+|-------|----------|--------|-----------|-------------|-----------|--------|
+| google/vit-base-patch16-224 | Vision (ViT) | 86.6M | 330 MB | PASS | PASS | PASS |
+| openai/clip-vit-base-patch32 | Multimodal (CLIP) | 151.3M | 578 MB | PASS | PASS | PASS |
+| distilgpt2 | LLM | 81.9M | 313 MB | PASS | PASS | PASS |
+| facebook/detr-resnet-50 | Object Detection | 41.6M | 159 MB | PASS | PASS | PASS |
+| Salesforce/blip-image-captioning-base | Multimodal (BLIP) | 196.2M | 749 MB | PASS | PASS | PASS |
+| facebook/opt-1.3b | 1.3B LLM | 1,315.7M | 5,412 MB | PASS | PASS | PASS |
+
+## [0.9.0] - 2026-05-01
+
+### Added
+- **`isat onnx` command**: Universal model-to-ONNX converter with auto-tune integration
+- **Format auto-detection**: Automatically identifies PyTorch, TensorFlow, JAX, HuggingFace,
+  TFLite, and SafeTensors formats
+- **Conversion backends**: optimum.exporters.onnx (primary), torch.onnx.export (fallback),
+  tf2onnx, tflite2onnx, jax2onnx
+- **ONNX validation and simplification**: Built-in onnx.checker + optional onnxsim
+- **Auto-tune after conversion**: Automatically detects hardware and generates inference scripts
+
+## [0.8.5] - 2026-04-27
+
+### Changed
+- Removed internal report references from public codebase for professionalism
+
 ## [0.8.4] - 2026-04-27
 
 ### Added

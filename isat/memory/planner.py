@@ -160,7 +160,9 @@ class MemoryPlanner:
 
     def _detect_vram(self) -> float:
         try:
-            p = Path("/sys/class/drm/card0/device/mem_info_vram_total")
+            from isat.utils.sysfs import _gpu_card_path
+            card = _gpu_card_path()
+            p = (card / "device" / "mem_info_vram_total") if card else Path("/sys/class/drm/card0/device/mem_info_vram_total")
             if p.exists():
                 return int(p.read_text().strip()) / (1024 * 1024)
         except (OSError, ValueError):

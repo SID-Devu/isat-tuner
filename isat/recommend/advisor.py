@@ -49,9 +49,11 @@ class RecommendationReport:
         lines.append(f"  {'-'*5} {'-'*30} {'-'*30} {'-'*12} {'-'*10} {'-'*15} {'-'*10}")
 
         for r in self.recommendations:
+            lat = r.estimated_latency_ms
+            lat_str = "<0.1ms" if 0 < lat < 0.05 else f"{lat:.1f}ms"
             lines.append(
                 f"  {r.rank:<5} {r.hardware:<30} {r.provider:<30} "
-                f"{r.estimated_latency_ms:>10.0f}ms {f'${r.estimated_cost_hr:.2f}':>10} "
+                f"{lat_str:>12} {f'${r.estimated_cost_hr:.2f}':>10} "
                 f"{r.memory_fit:>15} {r.precision:>10}"
             )
             if r.notes:

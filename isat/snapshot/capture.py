@@ -96,7 +96,9 @@ class EnvSnapshot:
             info["rocm_version"] = ver_file.read_text().strip()
 
         try:
-            p = Path("/sys/class/drm/card0/device")
+            from isat.utils.sysfs import _gpu_card_path
+            card = _gpu_card_path()
+            p = (card / "device") if card else Path("/sys/class/drm/card0/device")
             if (p / "gpu_id").exists():
                 info["gpu_id"] = (p / "gpu_id").read_text().strip()
             if (p / "mem_info_vram_total").exists():

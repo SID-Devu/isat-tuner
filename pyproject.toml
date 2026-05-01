@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "isat-tuner"
-version = "0.10.0"
-description = "ISAT: Inference Stack Auto-Tuner — 66-command CLI to convert, quantize, shard, merge, encrypt, test, stream, explain, benchmark, and deploy any ONNX model on any GPU."
+version = "0.11.0"
+description = "ISAT: Inference Stack Auto-Tuner — 76-command CLI with speculative decoding, continuous batching, grammar-constrained generation, LoRA hot-swap, tensor parallelism, CUDA graph capture, mixed-precision search, knowledge distillation, architecture surgery, and live monitoring."
 readme = {file = "README.md", content-type = "text/markdown"}
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
@@ -26,6 +26,10 @@ keywords = [
     "model-sharding", "model-merging", "model-encryption", "model-safety",
     "model-testing", "streaming-inference", "explainability", "cloud-deploy",
     "int4-quantization", "smoothquant", "kv-cache", "benchmark-suite",
+    "speculative-decoding", "continuous-batching", "paged-attention",
+    "grammar-constrained-generation", "lora-adapter", "tensor-parallelism",
+    "cuda-graph-capture", "mixed-precision", "knowledge-distillation",
+    "architecture-surgery", "live-monitoring", "rejection-sampling",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.11.0] - 2026-05-01
+
+### Added -- 10 Cutting-Edge Modules (76 Total Commands)
+- **`isat speculate`**: Speculative decoding engine with draft model + rejection sampling
+  (Leviathan et al. 2023), self-speculation via early exit, Medusa-style multi-head prediction.
+  Expected 2-4x decode speedup with zero quality loss.
+- **`isat serve-llm`**: Continuous batching LLM server with PagedAttention-style KV cache pool,
+  iteration-level scheduling, chunked prefill, prefix caching, SSE streaming, and
+  OpenAI-compatible `/v1/completions` and `/v1/chat/completions` endpoints.
+- **`isat constrain`**: Grammar-constrained generation via FSM-compiled token masking.
+  JSON schema (pushdown automaton), regex (NFA->DFA via Thompson + subset construction),
+  and GBNF grammar support. Per-token mask computation in <50us.
+- **`isat lora`**: LoRA adapter runtime with hot-swap, multi-LoRA routing, and advanced weight
+  merging: TIES-Merging (trim/elect/merge), DARE (drop-and-rescale), SLERP (spherical
+  interpolation), Task Arithmetic, Model Soup. Adapter fusion for zero-overhead inference.
+- **`isat tensor-parallel`**: True tensor parallelism — column-parallel QKV projections,
+  row-parallel output projections, all-reduce synchronization. Auto-detect parallelizable
+  layers from ONNX graph topology.
+- **`isat graph-compile`**: CUDA/HIP graph capture and replay for 20-47% decode throughput
+  improvement. Graph region analysis (static vs dynamic), warmup capture, input pointer
+  swapping during replay.
+- **`isat amp-profile`**: Automatic mixed precision — per-layer profiling at FP32/FP16/INT8/INT4,
+  Pareto-optimal precision search via dynamic programming / greedy / beam search.
+  Generate mixed-precision ONNX models.
+- **`isat distill-train`**: Live knowledge distillation with real training loop through ORT.
+  KL-divergence + cross-entropy loss, temperature scheduling, Adam optimizer in pure numpy.
+  Auto-create smaller student via depth/width reduction.
+- **`isat a2a`**: Architecture-to-architecture conversion — attention head pruning with
+  importance scoring (magnitude/entropy/Taylor), width/depth shrinking, vocabulary pruning
+  for domain-specific deployment.
+- **`isat monitor-live`**: Real-time production inference monitor with anomaly detection
+  (latency spikes, throughput drops, memory leaks, thermal throttling), auto-remediation,
+  and ASCII TUI dashboard with sparkline latency trends.
+
+### Changed
+- CLI expanded from 66 to 76 commands
+- Version bumped to 0.11.0
+
 ## [0.10.0] - 2026-05-01
 
 ### Added -- 10 New Modules (66 Total Commands)

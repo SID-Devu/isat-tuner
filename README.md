@@ -7,9 +7,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/SID-Devu/isat-tuner.svg)](https://github.com/SID-Devu/isat-tuner)
 [![GitHub release](https://img.shields.io/github/v/release/SID-Devu/isat-tuner)](https://github.com/SID-Devu/isat-tuner/releases)
 
-> **66-command CLI to convert, quantize, shard, merge, encrypt, test, stream, explain, benchmark, and deploy any ONNX model -- on any GPU from any vendor.**
+> **76-command CLI with speculative decoding, continuous batching, grammar-constrained generation, LoRA hot-swap, tensor parallelism, CUDA graph capture, mixed-precision search, knowledge distillation, architecture surgery, and live monitoring -- on any GPU from any vendor.**
 
-ISAT is a production-grade CLI toolkit for the full ONNX inference lifecycle. It converts models from any framework (PyTorch, TensorFlow, JAX, HuggingFace, TFLite, SafeTensors) to ONNX, auto-detects your hardware (AMD, NVIDIA, Intel, Apple, Qualcomm), and generates optimized inference configurations. Beyond conversion and tuning, ISAT provides advanced quantization (INT4/INT8/FP16/SmoothQuant), model sharding for multi-GPU, streaming LLM inference with KV cache, model merging and composition, explainability tools, comprehensive benchmarking, AES-256 model encryption, safety guardrails (PII/toxicity/jailbreak detection), one-command cloud deployment (Docker/K8s/SageMaker/Azure/GCP), and automated model testing with JUnit CI integration.
+ISAT is a production-grade inference engine and CLI toolkit that competes with vLLM, TensorRT-LLM, and DeepSpeed on the features that matter. It includes speculative decoding (2-4x LLM speedup via draft model + rejection sampling), continuous batching with PagedAttention-style KV cache, grammar-constrained generation (JSON schema / regex / GBNF via FSM-compiled token masking), LoRA adapter hot-swap with TIES/DARE/SLERP weight merging, true tensor parallelism across GPUs, CUDA/HIP graph capture (20-47% throughput boost), Pareto-optimal mixed-precision search, live knowledge distillation with training loops, architecture surgery (head pruning, width/depth shrinking), and real-time anomaly detection monitoring. Plus model conversion from any framework, advanced quantization, cloud deployment, safety guardrails, and 50+ more commands.
 
 ```bash
 pip install isat-tuner
@@ -56,7 +56,49 @@ A single wrong choice can leave **40%+ performance on the table**. With 6 dimens
 
 ---
 
-## All 66 Commands
+## All 76 Commands
+
+### Speculative Decoding (NEW in v0.11.0)
+| Command | What it does |
+|---------|-------------|
+| `isat speculate` | 2-4x LLM speedup: draft model + rejection sampling, self-speculation, Medusa multi-head |
+
+### LLM Serving Engine (NEW in v0.11.0)
+| Command | What it does |
+|---------|-------------|
+| `isat serve-llm` | Continuous batching server with PagedAttention KV pool, OpenAI-compatible API, SSE streaming |
+
+### Grammar-Constrained Generation (NEW in v0.11.0)
+| Command | What it does |
+|---------|-------------|
+| `isat constrain` | Force output to match JSON schema / regex / GBNF grammar via FSM-compiled token masking |
+
+### LoRA & Weight Merging (NEW in v0.11.0)
+| Command | What it does |
+|---------|-------------|
+| `isat lora` | LoRA hot-swap, multi-LoRA routing, TIES/DARE/SLERP/Task Arithmetic weight merging, adapter fusion |
+
+### Parallelism & Compilation (NEW in v0.11.0)
+| Command | What it does |
+|---------|-------------|
+| `isat tensor-parallel` | True tensor parallelism: split weight matrices across GPUs with all-reduce |
+| `isat graph-compile` | CUDA/HIP graph capture + replay for 20-47% decode throughput improvement |
+
+### Precision & Distillation (NEW in v0.11.0)
+| Command | What it does |
+|---------|-------------|
+| `isat amp-profile` | Per-layer precision profiling + Pareto-optimal mixed-precision search (DP/greedy/beam) |
+| `isat distill-train` | Live knowledge distillation: KL-divergence training loop, auto student creation |
+
+### Architecture Surgery (NEW in v0.11.0)
+| Command | What it does |
+|---------|-------------|
+| `isat a2a` | Attention head pruning, width/depth shrinking, vocabulary pruning for domain deployment |
+
+### Live Monitoring (NEW in v0.11.0)
+| Command | What it does |
+|---------|-------------|
+| `isat monitor-live` | Real-time anomaly detection daemon + ASCII TUI dashboard with sparkline trends |
 
 ### Model Conversion
 | Command | What it does |
@@ -621,7 +663,7 @@ echo $?  # 0 = pass, 1 = fail
 
 ```
 isat/
-├── cli.py                 # 66 subcommands
+├── cli.py                 # 76 subcommands
 ├── converter/             # Universal model-to-ONNX conversion engine
 │   ├── engine.py          #   Format detection + dispatch
 │   └── backends.py        #   HuggingFace, PyTorch, TF, JAX, TFLite, SafeTensors
@@ -645,6 +687,33 @@ isat/
 │   └── deployer.py        #   Docker/K8s/SageMaker/Azure/GCP
 ├── model_test/            # Automated testing (v0.10.0)
 │   └── tester.py          #   Determinism, stability, golden tests
+├── speculative/           # Speculative decoding engine (v0.11.0)
+│   └── engine.py          #   Draft-verify, self-speculation, Medusa
+├── llm_server/            # Continuous batching LLM server (v0.11.0)
+│   ├── kv_pool.py         #   PagedAttention KV cache pool
+│   ├── scheduler.py       #   Iteration-level request scheduler
+│   └── server.py          #   OpenAI-compatible FastAPI server
+├── constrained/           # Grammar-constrained generation (v0.11.0)
+│   ├── fsm.py             #   NFA/DFA/PDA for token masking
+│   └── grammar.py         #   JSON schema, regex, GBNF generator
+├── lora/                  # LoRA adapter runtime (v0.11.0)
+│   ├── adapter.py         #   Hot-swap, multi-LoRA, fusion
+│   └── merger.py          #   TIES/DARE/SLERP/Task Arithmetic
+├── parallel/              # Tensor parallelism (v0.11.0)
+│   ├── tensor_parallel.py #   Column/row-parallel weight splitting
+│   └── comm.py            #   Multi-GPU communication primitives
+├── graph_compile/         # CUDA/HIP graph capture (v0.11.0)
+│   └── capture.py         #   Graph capture, replay, region analysis
+├── amp/                   # Mixed precision profiling (v0.11.0)
+│   ├── profiler.py        #   Per-layer precision benchmarking
+│   └── optimizer.py       #   Pareto-optimal precision search
+├── distill_train/         # Knowledge distillation (v0.11.0)
+│   └── trainer.py         #   KL-div training loop, student builder
+├── arch_convert/          # Architecture surgery (v0.11.0)
+│   └── converter.py       #   Head pruning, width/depth shrinking
+├── live_monitor/          # Production monitoring (v0.11.0)
+│   ├── daemon.py          #   Anomaly detection + remediation
+│   └── dashboard.py       #   ASCII TUI with sparkline trends
 ├── auto_detect/           # Hardware auto-detection + inference recommendations
 │   ├── detector.py        #   Cross-platform GPU/CPU detection
 │   ├── recommender.py     #   Vendor-specific recipe generation
@@ -733,6 +802,7 @@ Optional:
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| v0.11.0 | May 2026 | Cutting-edge engine: speculative decoding, continuous batching, grammar-constrained gen, LoRA TIES/DARE/SLERP, tensor parallelism, CUDA graph capture, mixed-precision search, distillation, architecture surgery, live monitor (76 commands) |
 | v0.10.0 | May 2026 | 10 new modules: quantize, stream, shard, merge, explain, benchmark-suite, encrypt, safety, cloud-deploy, test (66 commands) |
 | v0.9.1 | May 2026 | Universal model converter (`isat onnx`), 6-model E2E validation, PyTorch 2.9+ compat, multi-modal export (56 commands) |
 | v0.8.x | Apr 2026 | Auto-detect hardware, generate inference scripts, Windows DirectML + MIGraphX via WinML, cross-platform GPU detection |
@@ -753,7 +823,7 @@ Optional:
   author = {Sudheer Ibrahim Daniel Devu},
   title = {ISAT: Inference Stack Auto-Tuner},
   year = {2026},
-  version = {0.10.0},
+  version = {0.11.0},
   url = {https://github.com/SID-Devu/isat-tuner},
   license = {Apache-2.0}
 }

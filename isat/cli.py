@@ -582,6 +582,118 @@ def main(argv: list[str] | None = None) -> int:
     p_t.add_argument("--generate-golden", action="store_true", help="Generate golden test file")
     p_t.add_argument("--junit", action="store_true", help="Output JUnit XML for CI")
 
+    # ── speculate ────────────────────────────────────────────
+    p_sp = sub.add_parser("speculate", help="Speculative decoding: 2-4x LLM speedup via draft model + rejection sampling")
+    p_sp.add_argument("target", help="Path to target .onnx LLM model")
+    p_sp.add_argument("--draft", default=None, help="Path to draft .onnx model (smaller/faster)")
+    p_sp.add_argument("--mode", choices=["draft", "self", "medusa"], default="draft")
+    p_sp.add_argument("--num-speculative", type=int, default=5, help="Tokens to speculate per step")
+    p_sp.add_argument("--prompt", default="The future of AI is", help="Input prompt")
+    p_sp.add_argument("--tokenizer", default=None, help="Tokenizer name/path")
+    p_sp.add_argument("--max-tokens", type=int, default=128)
+    p_sp.add_argument("--temperature", type=float, default=0.8)
+    p_sp.add_argument("--provider", default="CPUExecutionProvider")
+    p_sp.add_argument("--benchmark", action="store_true", help="Run speculative vs naive benchmark")
+
+    # ── serve-llm ────────────────────────────────────────────
+    p_sl = sub.add_parser("serve-llm", help="Continuous batching LLM server with PagedAttention (OpenAI-compatible)")
+    p_sl.add_argument("model", help="Path to .onnx LLM model")
+    p_sl.add_argument("--port", type=int, default=8000)
+    p_sl.add_argument("--provider", default="CPUExecutionProvider")
+    p_sl.add_argument("--tokenizer", default=None, help="Tokenizer name/path")
+    p_sl.add_argument("--max-batch-size", type=int, default=32)
+    p_sl.add_argument("--max-seq-len", type=int, default=2048)
+    p_sl.add_argument("--kv-blocks", type=int, default=256, help="Number of KV cache blocks")
+    p_sl.add_argument("--block-size", type=int, default=16, help="Tokens per KV block")
+
+    # ── constrain ────────────────────────────────────────────
+    p_cn = sub.add_parser("constrain", help="Grammar-constrained generation (JSON schema / regex / GBNF)")
+    p_cn.add_argument("model", help="Path to .onnx LLM model")
+    p_cn.add_argument("--prompt", default="Generate a JSON object:", help="Input prompt")
+    p_cn.add_argument("--schema", default=None, help="JSON schema string or path to .json file")
+    p_cn.add_argument("--regex", default=None, help="Regex pattern to constrain output")
+    p_cn.add_argument("--grammar", default=None, help="GBNF grammar string or path to .gbnf file")
+    p_cn.add_argument("--tokenizer", default=None, help="Tokenizer name/path")
+    p_cn.add_argument("--max-tokens", type=int, default=512)
+    p_cn.add_argument("--temperature", type=float, default=0.7)
+    p_cn.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── lora ─────────────────────────────────────────────────
+    p_lo = sub.add_parser("lora", help="LoRA adapter runtime: load, hot-swap, fuse, merge (TIES/DARE/SLERP)")
+    p_lo.add_argument("model", help="Path to base .onnx model")
+    p_lo.add_argument("--action", choices=["list", "activate", "fuse", "merge"], default="list")
+    p_lo.add_argument("--adapter", default=None, help="Path to LoRA adapter (safetensors/npz)")
+    p_lo.add_argument("--output", "-o", default=None, help="Output path for fused/merged model")
+    p_lo.add_argument("--merge-method", choices=["ties", "dare", "slerp", "task-arithmetic", "soup"],
+                       default="ties")
+    p_lo.add_argument("--merge-models", nargs="*", default=[], help="Model paths for weight merging")
+    p_lo.add_argument("--density", type=float, default=0.5, help="TIES density")
+    p_lo.add_argument("--drop-rate", type=float, default=0.9, help="DARE drop rate")
+    p_lo.add_argument("--slerp-t", type=float, default=0.5, help="SLERP interpolation factor")
+    p_lo.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── tensor-parallel ──────────────────────────────────────
+    p_tp = sub.add_parser("tensor-parallel", help="True tensor parallelism: split weight matrices across GPUs")
+    p_tp.add_argument("model", help="Path to .onnx model")
+    p_tp.add_argument("--action", choices=["analyze", "split", "run"], default="analyze")
+    p_tp.add_argument("--num-gpus", type=int, default=2)
+    p_tp.add_argument("--output-dir", default=None, help="Output directory for shards")
+    p_tp.add_argument("--provider", default="CUDAExecutionProvider")
+
+    # ── graph-compile ────────────────────────────────────────
+    p_gc = sub.add_parser("graph-compile", help="CUDA/HIP graph capture + replay (20-47%% decode speedup)")
+    p_gc.add_argument("model", help="Path to .onnx model")
+    p_gc.add_argument("--action", choices=["analyze", "capture", "benchmark"], default="benchmark")
+    p_gc.add_argument("--provider", default="CUDAExecutionProvider")
+    p_gc.add_argument("--warmup", type=int, default=3)
+    p_gc.add_argument("--runs", type=int, default=100)
+
+    # ── amp-profile ──────────────────────────────────────────
+    p_ap = sub.add_parser("amp-profile", help="Automatic mixed precision: per-layer profiling + Pareto-optimal search")
+    p_ap.add_argument("model", help="Path to .onnx model")
+    p_ap.add_argument("--action", choices=["profile", "optimize", "apply"], default="profile")
+    p_ap.add_argument("--precisions", default="fp32,fp16,int8,int4", help="Comma-separated precisions to test")
+    p_ap.add_argument("--max-mse", type=float, default=0.001, help="Maximum MSE budget for optimization")
+    p_ap.add_argument("--strategy", choices=["dp", "greedy", "beam"], default="greedy")
+    p_ap.add_argument("--output", "-o", default=None, help="Output path for mixed-precision model")
+    p_ap.add_argument("--num-samples", type=int, default=50)
+    p_ap.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── distill-train ────────────────────────────────────────
+    p_dt = sub.add_parser("distill-train", help="Live knowledge distillation with training loop through ORT")
+    p_dt.add_argument("teacher", help="Path to teacher .onnx model")
+    p_dt.add_argument("--student", default=None, help="Path to student .onnx model (auto-created if omitted)")
+    p_dt.add_argument("--output", "-o", default=None, help="Output path for trained student")
+    p_dt.add_argument("--epochs", type=int, default=10)
+    p_dt.add_argument("--batch-size", type=int, default=8)
+    p_dt.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
+    p_dt.add_argument("--temperature", type=float, default=4.0, help="Distillation temperature")
+    p_dt.add_argument("--alpha", type=float, default=0.5, help="KL vs CE loss balance")
+    p_dt.add_argument("--reduction", choices=["depth", "width", "both"], default="depth",
+                       help="Student architecture reduction strategy")
+    p_dt.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── a2a ──────────────────────────────────────────────────
+    p_a2a = sub.add_parser("a2a", help="Architecture-to-architecture conversion (head pruning, width/depth shrinking, vocab pruning)")
+    p_a2a.add_argument("model", help="Path to .onnx model")
+    p_a2a.add_argument("--action", choices=["analyze", "prune-heads", "shrink-width", "shrink-depth", "prune-vocab"],
+                        default="analyze")
+    p_a2a.add_argument("--output", "-o", default=None, help="Output path for converted model")
+    p_a2a.add_argument("--ratio", type=float, default=0.5, help="Reduction ratio (0.5 = keep half)")
+    p_a2a.add_argument("--method", choices=["magnitude", "entropy", "taylor", "activation", "uniform", "first_last", "importance"],
+                        default="magnitude")
+    p_a2a.add_argument("--keep-tokens", default=None, help="Comma-separated token IDs to keep (vocab pruning)")
+    p_a2a.add_argument("--corpus", default=None, help="Corpus file for frequency-based vocab pruning")
+    p_a2a.add_argument("--provider", default="CPUExecutionProvider")
+
+    # ── monitor-live ─────────────────────────────────────────
+    p_ml = sub.add_parser("monitor-live", help="Real-time inference monitor with anomaly detection and TUI dashboard")
+    p_ml.add_argument("--pid", type=int, default=None, help="PID of running inference process")
+    p_ml.add_argument("--model", default=None, help="Path to .onnx model (self-monitoring mode)")
+    p_ml.add_argument("--port", type=int, default=None, help="Port of running ISAT server")
+    p_ml.add_argument("--no-dashboard", action="store_true", help="Disable TUI dashboard (log-only)")
+    p_ml.add_argument("--provider", default="CPUExecutionProvider")
+
     args = parser.parse_args(argv)
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -677,6 +789,16 @@ def main(argv: list[str] | None = None) -> int:
             "safety": _cmd_safety,
             "cloud-deploy": _cmd_cloud_deploy,
             "test": _cmd_test,
+            "speculate": _cmd_speculate,
+            "serve-llm": _cmd_serve_llm,
+            "constrain": _cmd_constrain,
+            "lora": _cmd_lora,
+            "tensor-parallel": _cmd_tensor_parallel,
+            "graph-compile": _cmd_graph_compile,
+            "amp-profile": _cmd_amp_profile,
+            "distill-train": _cmd_distill_train,
+            "a2a": _cmd_a2a,
+            "monitor-live": _cmd_monitor_live,
         }
         handler = handlers.get(args.command)
         if handler:
@@ -2761,6 +2883,387 @@ def _cmd_test(args) -> int:
         print(f"\n  JUnit XML: {junit_path}")
 
     return 0 if results.failed == 0 else 1
+
+
+def _cmd_speculate(args) -> int:
+    from isat.speculative.engine import SpeculativeDecoder, SelfSpeculativeDecoder
+
+    print(BANNER)
+    print(f"  Target     : {args.target}")
+    print(f"  Draft      : {args.draft or '(self-speculation)'}")
+    print(f"  Mode       : {args.mode}")
+    print(f"  Speculative: {args.num_speculative} tokens/step")
+    print()
+
+    if args.mode == "self":
+        decoder = SelfSpeculativeDecoder(args.target, provider=args.provider)
+    else:
+        if not args.draft:
+            print("  ERROR: --draft required for draft model mode")
+            return 1
+        decoder = SpeculativeDecoder(
+            args.target, args.draft,
+            provider=args.provider,
+            num_speculative_tokens=args.num_speculative,
+        )
+
+    if args.benchmark:
+        print("  Running speculative decoding benchmark...")
+        try:
+            from transformers import AutoTokenizer
+            tok = AutoTokenizer.from_pretrained(args.tokenizer or "gpt2")
+            ids = tok.encode(args.prompt)
+            metrics = decoder.benchmark(ids, max_new_tokens=args.max_tokens)
+            print(f"\n  Acceptance rate    : {metrics.acceptance_rate:.1%}")
+            print(f"  Tokens/step        : {metrics.mean_tokens_per_step:.2f}")
+            print(f"  Speedup vs naive   : {metrics.speedup_vs_naive:.2f}x")
+            print(f"  TTFT               : {metrics.ttft_ms:.1f} ms")
+            print(f"  Mean ITL           : {metrics.mean_itl_ms:.1f} ms")
+            print(f"  Tokens/sec         : {metrics.tokens_per_sec:.1f}")
+            print(f"  Draft time         : {metrics.draft_time_ms:.0f} ms")
+            print(f"  Verify time        : {metrics.verify_time_ms:.0f} ms")
+        except Exception as e:
+            print(f"  Benchmark failed: {e}")
+            return 1
+        return 0
+
+    try:
+        result = decoder.generate_text(
+            args.prompt, tokenizer_name=args.tokenizer or "gpt2",
+            max_new_tokens=args.max_tokens, temperature=args.temperature,
+        )
+        print(f"  Generated:\n\n  {result}")
+    except Exception as e:
+        print(f"  Generation failed: {e}")
+        return 1
+    return 0
+
+
+def _cmd_serve_llm(args) -> int:
+    from isat.llm_server.server import serve_llm
+
+    print(BANNER)
+    print(f"  Model      : {args.model}")
+    print(f"  Provider   : {args.provider}")
+    print(f"  Port       : {args.port}")
+    print(f"  Tokenizer  : {args.tokenizer or '(none)'}")
+    print(f"  Max batch  : {args.max_batch_size}")
+    print(f"  KV blocks  : {args.kv_blocks} x {args.block_size}")
+    print()
+
+    serve_llm(
+        args.model,
+        port=args.port,
+        provider=args.provider,
+        tokenizer_name=args.tokenizer,
+        max_batch_size=args.max_batch_size,
+        max_seq_len=args.max_seq_len,
+        num_kv_blocks=args.kv_blocks,
+        block_size=args.block_size,
+    )
+    return 0
+
+
+def _cmd_constrain(args) -> int:
+    from isat.constrained.grammar import constrained_generate
+
+    print(BANNER)
+    print(f"  Model      : {args.model}")
+    print(f"  Prompt     : {args.prompt}")
+    print()
+
+    schema = None
+    regex = args.regex
+    grammar = args.grammar
+
+    if args.schema:
+        import json as json_mod
+        schema_str = args.schema
+        if Path(schema_str).exists():
+            schema_str = Path(schema_str).read_text()
+        schema = json_mod.loads(schema_str)
+
+    if args.grammar and Path(args.grammar).exists():
+        grammar = Path(args.grammar).read_text()
+
+    result = constrained_generate(
+        args.model, args.prompt,
+        schema=schema, regex=regex, grammar=grammar,
+        tokenizer_name=args.tokenizer,
+        max_tokens=args.max_tokens,
+        temperature=args.temperature,
+        provider=args.provider,
+    )
+
+    print(f"  Valid            : {result.valid}")
+    print(f"  Tokens generated : {result.tokens_generated}")
+    print(f"  Tokens rejected  : {result.tokens_rejected}")
+    print(f"  FSM overhead     : {result.fsm_overhead_ms:.1f} ms")
+    print(f"  Total time       : {result.total_time_ms:.0f} ms")
+    print(f"\n  Output:\n  {result.text}")
+    if result.parsed_value and isinstance(result.parsed_value, dict):
+        import json as json_mod
+        print(f"\n  Parsed JSON:\n  {json_mod.dumps(result.parsed_value, indent=2)}")
+    return 0
+
+
+def _cmd_lora(args) -> int:
+    print(BANNER)
+    action = args.action
+
+    if action == "merge" and args.merge_models:
+        from isat.lora.merger import WeightMerger
+        merger = WeightMerger(args.model)
+        method = args.merge_method
+        output = args.output or f"{Path(args.model).stem}_merged.onnx"
+        models = args.merge_models
+
+        print(f"  Base       : {args.model}")
+        print(f"  Models     : {', '.join(models)}")
+        print(f"  Method     : {method}")
+        print()
+
+        method_map = {
+            "ties": lambda: merger.ties_merge(models, density=args.density, output_path=output),
+            "dare": lambda: merger.dare_merge(models, drop_rate=args.drop_rate, output_path=output),
+            "slerp": lambda: merger.slerp_merge(models[0], models[1] if len(models) > 1 else models[0], t=args.slerp_t, output_path=output),
+            "task-arithmetic": lambda: merger.task_arithmetic(models, output_path=output),
+            "soup": lambda: merger.model_soup(models, output_path=output),
+        }
+        result = method_map[method]()
+        if result.success:
+            print(f"  Merged {result.num_models} models -> {result.output_path}")
+            print(f"  Size: {result.total_size_mb:.1f} MB, Time: {result.elapsed_s:.1f}s")
+        else:
+            print(f"  MERGE FAILED: {result.error}")
+            return 1
+        return 0
+
+    from isat.lora.adapter import LoRARuntime
+    runtime = LoRARuntime(args.model, provider=args.provider)
+
+    if action == "list":
+        adapters = runtime.list_adapters()
+        if not adapters:
+            print("  No adapters loaded. Use --adapter PATH to load one.")
+        for a in adapters:
+            print(f"  {a.name}: rank={a.rank}, params={a.num_params:,}, {a.size_mb:.1f} MB")
+        return 0
+
+    if not args.adapter:
+        print("  ERROR: --adapter required for this action")
+        return 1
+
+    runtime.load_adapter(args.adapter)
+    if action == "activate":
+        runtime.activate(Path(args.adapter).stem)
+        print(f"  Adapter activated: {args.adapter}")
+    elif action == "fuse":
+        output = args.output or f"{Path(args.model).stem}_fused.onnx"
+        runtime.fuse(Path(args.adapter).stem, output)
+        print(f"  Fused model saved: {output}")
+    return 0
+
+
+def _cmd_tensor_parallel(args) -> int:
+    from isat.parallel.tensor_parallel import TensorParallelizer, TensorParallelRunner, tensor_parallel
+
+    print(BANNER)
+    print(f"  Model    : {args.model}")
+    print(f"  GPUs     : {args.num_gpus}")
+    print(f"  Action   : {args.action}")
+    print()
+
+    tp = TensorParallelizer(args.model, num_gpus=args.num_gpus, provider=args.provider)
+
+    if args.action == "analyze":
+        plan = tp.analyze()
+        print(f"  Column-parallel layers : {len(plan.column_parallel_layers)}")
+        print(f"  Row-parallel layers    : {len(plan.row_parallel_layers)}")
+        print(f"  Replicated layers      : {len(plan.replicated_layers)}")
+        print(f"  Est. memory/GPU        : {plan.estimated_memory_per_gpu_mb:.1f} MB")
+        print(f"  Communication volume   : {plan.communication_volume_mb:.1f} MB")
+        return 0
+
+    output_dir = args.output_dir or f"{Path(args.model).stem}_tp{args.num_gpus}"
+    if args.action == "split":
+        result = tp.split(output_dir)
+        if result.success:
+            print(f"  Split into {result.num_gpus} shards in {result.elapsed_s:.1f}s")
+            for p in result.shard_paths:
+                print(f"    {p}")
+        else:
+            print(f"  FAILED: {result.error}")
+            return 1
+    return 0
+
+
+def _cmd_graph_compile(args) -> int:
+    from isat.graph_compile.capture import GraphCapture, GraphRegionAnalyzer, graph_compile
+
+    print(BANNER)
+    print(f"  Model    : {args.model}")
+    print(f"  Action   : {args.action}")
+    print(f"  Provider : {args.provider}")
+    print()
+
+    if args.action == "analyze":
+        analyzer = GraphRegionAnalyzer(args.model)
+        report = analyzer.analyze()
+        print(f"  Static regions     : {report.num_static_regions}")
+        print(f"  Dynamic regions    : {report.num_dynamic_regions}")
+        print(f"  Capturable nodes   : {report.capturable_nodes} / {report.total_nodes}")
+        print(f"  Capture coverage   : {report.capture_coverage:.1%}")
+        return 0
+
+    gc = GraphCapture(args.model, provider=args.provider)
+    if args.action == "benchmark":
+        metrics = gc.benchmark(num_runs=args.runs, num_warmup=args.warmup)
+        print(f"  Normal mean   : {metrics.normal_mean_ms:.2f} ms")
+        print(f"  Normal P99    : {metrics.normal_p99_ms:.2f} ms")
+        print(f"  Captured mean : {metrics.captured_mean_ms:.2f} ms")
+        print(f"  Captured P99  : {metrics.captured_p99_ms:.2f} ms")
+        print(f"  Speedup       : {metrics.speedup_ratio:.2f}x")
+    return 0
+
+
+def _cmd_amp_profile(args) -> int:
+    from isat.amp.profiler import PrecisionProfiler
+
+    print(BANNER)
+    print(f"  Model      : {args.model}")
+    print(f"  Action     : {args.action}")
+    print()
+
+    precisions = args.precisions.split(",")
+    profiler = PrecisionProfiler(args.model, provider=args.provider)
+
+    if args.action == "profile":
+        profile = profiler.profile_all(precisions=precisions, num_samples=args.num_samples)
+        print(f"  {'Layer':<40} {'Precision':<8} {'MSE':>10} {'CosSim':>8} {'Latency':>10}")
+        print(f"  {'─' * 80}")
+        for layer, prec_results in list(profile.items())[:20]:
+            for prec, r in prec_results.items():
+                print(f"  {layer[:40]:<40} {prec:<8} {r.mse:>10.6f} {r.cosine_sim:>8.4f} {r.latency_ms:>8.2f}ms")
+        return 0
+
+    if args.action == "optimize":
+        from isat.amp.optimizer import MixedPrecisionOptimizer
+        profile = profiler.profile_all(precisions=precisions, num_samples=args.num_samples)
+        optimizer = MixedPrecisionOptimizer(profile)
+        assignment = optimizer.optimize(max_mse=args.max_mse, strategy=args.strategy)
+        print(f"  Total MSE          : {assignment.total_mse:.6f}")
+        print(f"  Total latency      : {assignment.total_latency_ms:.1f} ms")
+        print(f"  Speedup vs FP32    : {assignment.speedup_vs_fp32:.2f}x")
+        print(f"  Compression ratio  : {assignment.compression_ratio:.2f}x")
+        if args.output:
+            optimizer.apply(assignment, args.output)
+            print(f"\n  Mixed-precision model saved: {args.output}")
+        return 0
+    return 0
+
+
+def _cmd_distill_train(args) -> int:
+    from isat.distill_train.trainer import DistillationTrainer, distill_model
+
+    print(BANNER)
+    print(f"  Teacher    : {args.teacher}")
+    print(f"  Student    : {args.student or '(auto-created)'}")
+    print(f"  Epochs     : {args.epochs}")
+    print(f"  Temperature: {args.temperature}")
+    print(f"  Alpha      : {args.alpha}")
+    print()
+
+    output = args.output or f"{Path(args.teacher).stem}_student.onnx"
+    result = distill_model(
+        teacher_path=args.teacher,
+        student_path=args.student,
+        output_path=output,
+        num_epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.lr,
+        temperature=args.temperature,
+        alpha=args.alpha,
+    )
+
+    if result.success:
+        print(f"  Epochs completed   : {result.epochs_completed}")
+        print(f"  Final loss         : {result.final_loss:.4f}")
+        print(f"  Teacher size       : {result.teacher_size_mb:.1f} MB")
+        print(f"  Student size       : {result.student_size_mb:.1f} MB")
+        print(f"  Compression        : {result.compression_ratio:.2f}x")
+        print(f"  Training time      : {result.training_time_s:.1f}s")
+        print(f"\n  Student model: {result.output_path}")
+    else:
+        print(f"  DISTILLATION FAILED: {result.error}")
+        return 1
+    return 0
+
+
+def _cmd_a2a(args) -> int:
+    from isat.arch_convert.converter import ArchitectureConverter, convert_architecture
+
+    print(BANNER)
+    print(f"  Model    : {args.model}")
+    print(f"  Action   : {args.action}")
+    print()
+
+    conv = ArchitectureConverter(args.model)
+
+    if args.action == "analyze":
+        analysis = conv.analyze()
+        print(f"  Layers         : {analysis.num_layers}")
+        print(f"  Attention heads: {analysis.num_heads}")
+        print(f"  Hidden dim     : {analysis.hidden_dim}")
+        print(f"  FFN dim        : {analysis.ffn_dim}")
+        print(f"  Vocab size     : {analysis.vocab_size}")
+        print(f"  Total params   : {analysis.total_params:,}")
+        return 0
+
+    output = args.output or f"{Path(args.model).stem}_{args.action}.onnx"
+
+    if args.action == "prune-heads":
+        result = conv.prune_heads(
+            importance_method=args.method,
+            num_heads_to_keep=max(1, int(conv.analyze().num_heads * args.ratio)),
+            output_path=output,
+        )
+    elif args.action == "shrink-width":
+        result = conv.shrink_width(ratio=args.ratio, importance_method=args.method, output_path=output)
+    elif args.action == "shrink-depth":
+        result = conv.shrink_depth(ratio=args.ratio, method=args.method, output_path=output)
+    elif args.action == "prune-vocab":
+        keep = None
+        if args.keep_tokens:
+            keep = [int(t) for t in args.keep_tokens.split(",")]
+        result = conv.prune_vocab(keep_tokens=keep, corpus_path=args.corpus, output_path=output)
+    else:
+        print(f"  Unknown action: {args.action}")
+        return 1
+
+    if result.success:
+        print(f"  Original params : {result.original_params:,}")
+        print(f"  New params      : {getattr(result, 'pruned_params', getattr(result, 'new_params', 0)):,}")
+        print(f"  Reduction       : {result.reduction_ratio:.2f}x")
+        print(f"  Output          : {result.output_path}")
+    else:
+        print(f"  FAILED: {result.error}")
+        return 1
+    return 0
+
+
+def _cmd_monitor_live(args) -> int:
+    from isat.live_monitor.daemon import InferenceMonitor
+    from isat.live_monitor.dashboard import MonitorDashboard, monitor_live
+
+    print(BANNER)
+    monitor_live(
+        pid=args.pid,
+        model_path=args.model,
+        port=args.port,
+        dashboard=not args.no_dashboard,
+    )
+    return 0
 
 
 def _cmd_onnx(args) -> int:

@@ -1,539 +1,461 @@
-# ISAT -- Inference Stack Auto-Tuner
+<p align="center">
+  <h1 align="center">ISAT</h1>
+  <p align="center"><strong>Inference Stack Auto-Tuner</strong></p>
+  <p align="center">
+    A production-grade inference engine for ONNX models.<br/>
+    76 CLI commands. Any GPU. Any framework. One tool.
+  </p>
+</p>
 
-[![PyPI version](https://img.shields.io/pypi/v/isat-tuner.svg)](https://pypi.org/project/isat-tuner/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/isat-tuner.svg)](https://pypi.org/project/isat-tuner/)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/SID-Devu/isat-tuner.svg)](https://github.com/SID-Devu/isat-tuner)
-[![GitHub release](https://img.shields.io/github/v/release/SID-Devu/isat-tuner)](https://github.com/SID-Devu/isat-tuner/releases)
+<p align="center">
+  <a href="https://pypi.org/project/isat-tuner/"><img src="https://img.shields.io/pypi/v/isat-tuner.svg?style=flat-square&color=blue" alt="PyPI"></a>
+  <a href="https://pypi.org/project/isat-tuner/"><img src="https://img.shields.io/pypi/dm/isat-tuner.svg?style=flat-square&color=green" alt="Downloads"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.9+-blue.svg?style=flat-square" alt="Python"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-orange.svg?style=flat-square" alt="License"></a>
+  <a href="https://github.com/SID-Devu/isat-tuner"><img src="https://img.shields.io/github/stars/SID-Devu/isat-tuner.svg?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/SID-Devu/isat-tuner/releases"><img src="https://img.shields.io/github/v/release/SID-Devu/isat-tuner?style=flat-square" alt="Release"></a>
+</p>
 
-> **76-command CLI with speculative decoding, continuous batching, grammar-constrained generation, LoRA hot-swap, tensor parallelism, CUDA graph capture, mixed-precision search, knowledge distillation, architecture surgery, and live monitoring -- on any GPU from any vendor.**
+---
 
-ISAT is a production-grade inference engine and CLI toolkit that competes with vLLM, TensorRT-LLM, and DeepSpeed on the features that matter. It includes speculative decoding (2-4x LLM speedup via draft model + rejection sampling), continuous batching with PagedAttention-style KV cache, grammar-constrained generation (JSON schema / regex / GBNF via FSM-compiled token masking), LoRA adapter hot-swap with TIES/DARE/SLERP weight merging, true tensor parallelism across GPUs, CUDA/HIP graph capture (20-47% throughput boost), Pareto-optimal mixed-precision search, live knowledge distillation with training loops, architecture surgery (head pruning, width/depth shrinking), and real-time anomaly detection monitoring. Plus model conversion from any framework, advanced quantization, cloud deployment, safety guardrails, and 50+ more commands.
+<table>
+<tr>
+<td width="50%">
+
+**What ISAT does in one sentence:**
+
+ISAT converts models from any framework to ONNX, auto-detects your hardware, and provides 76 production commands — from speculative decoding and continuous batching to tensor parallelism and live monitoring — that compete with vLLM, TensorRT-LLM, and DeepSpeed.
+
+</td>
+<td width="50%">
 
 ```bash
 pip install isat-tuner
 
-# Convert any model to ONNX + auto-detect hardware + generate inference script:
-isat onnx google/vit-base-patch16-224
+# Convert + auto-tune in one command
 isat onnx facebook/opt-1.3b
-isat onnx model.pt --input-shape 1,3,224,224
-
-# Detect your hardware and get instant recommendations:
-isat tune
-
-# Detect + recommend + auto-tune a specific model:
 isat tune model.onnx
 
-# Full production tuning with cloud profile:
-isat tune model.onnx --profile cloud
+# Serve with continuous batching
+isat serve-llm model.onnx --port 8000
+
+# 2-4x LLM speedup
+isat speculate model.onnx --draft draft.onnx
 ```
 
-> **Install note:** On modern Linux (Ubuntu 23.04+, Debian 12+), bare `pip install` is blocked by
-> [PEP 668](https://peps.python.org/pep-0668/). Use **`pipx install isat-tuner`** instead --
-> it creates an isolated environment and puts `isat` on your PATH automatically.
-> If you don't have pipx: `sudo apt install pipx && pipx ensurepath`.
+</td>
+</tr>
+</table>
 
 ---
 
-## Why ISAT?
+## Key Numbers
 
-Deploying an ONNX model today means manually tweaking dozens of settings:
-
-| Setting | Choices | Impact |
-|---------|---------|--------|
-| `HSA_XNACK` | 0 or 1 | Up to 30% on APUs |
-| `MIGRAPHX_DISABLE_MLIR` | 0 or 1 | 5-15% GEMM performance |
-| `MIGRAPHX_SET_GEMM_PROVIDER` | default, rocblas, hipblaslt | 10-25% on GEMM-heavy models |
-| Precision | FP32, FP16, INT8 | 2-4x throughput |
-| Batch size | 1 to 256 | Linear throughput scaling |
-| Graph optimization level | 0-99 | 5-20% latency reduction |
-| Inter/intra op threads | 1 to N | CPU-side parallelism |
-
-A single wrong choice can leave **40%+ performance on the table**. With 6 dimensions and 4+ choices each, there are **thousands of combinations**. Nobody has time to test them all manually.
-
-**ISAT does it automatically.**
+| Metric | Value |
+|--------|-------|
+| CLI commands | **76** |
+| Supported GPU vendors | **6** (AMD, NVIDIA, Intel, Apple, Qualcomm, DirectML) |
+| Model conversion backends | **7** (HuggingFace, PyTorch, TensorFlow, JAX, TFLite, SafeTensors, ONNX) |
+| E2E validated HuggingFace models | **6** (ViT, CLIP, DETR, BLIP, DistilGPT2, OPT-1.3B) |
+| Lines of Python | **30,000+** |
+| Modules | **40+** |
+| PyPI package | [`isat-tuner`](https://pypi.org/project/isat-tuner/) |
 
 ---
 
-## All 76 Commands
+## Feature Overview
 
-### Speculative Decoding (NEW in v0.11.0)
-| Command | What it does |
-|---------|-------------|
-| `isat speculate` | 2-4x LLM speedup: draft model + rejection sampling, self-speculation, Medusa multi-head |
+ISAT is organized into three tiers of capability:
 
-### LLM Serving Engine (NEW in v0.11.0)
-| Command | What it does |
-|---------|-------------|
-| `isat serve-llm` | Continuous batching server with PagedAttention KV pool, OpenAI-compatible API, SSE streaming |
+### Tier 1 — LLM Inference Engine
 
-### Grammar-Constrained Generation (NEW in v0.11.0)
-| Command | What it does |
-|---------|-------------|
-| `isat constrain` | Force output to match JSON schema / regex / GBNF grammar via FSM-compiled token masking |
+These features put ISAT on par with dedicated LLM serving frameworks.
 
-### LoRA & Weight Merging (NEW in v0.11.0)
-| Command | What it does |
-|---------|-------------|
-| `isat lora` | LoRA hot-swap, multi-LoRA routing, TIES/DARE/SLERP/Task Arithmetic weight merging, adapter fusion |
+| Command | Capability | How it works |
+|---------|-----------|--------------|
+| `isat speculate` | **2-4x LLM decode speedup** | Draft model generates K candidate tokens; target model verifies in one forward pass via rejection sampling (Leviathan et al. 2023). Also supports self-speculation (early-exit) and Medusa multi-head prediction. |
+| `isat serve-llm` | **Continuous batching server** | PagedAttention-style KV cache pool with block-level allocation, iteration-level scheduling, chunked prefill, prefix caching. OpenAI-compatible `/v1/completions` and `/v1/chat/completions` with SSE streaming. Prometheus `/metrics` endpoint. |
+| `isat constrain` | **Grammar-constrained generation** | Forces LLM output to match JSON schema, regex, or GBNF grammar. Regex compiled via Thompson's NFA construction + subset-construction DFA with precomputed per-state token masks for O(1) lookup. JSON schema via pushdown automaton. |
+| `isat stream` | **Token-by-token generation** | Autoregressive inference with KV cache management, nucleus sampling (top-k/top-p), TTFT/ITL/TPS benchmarking. |
 
-### Parallelism & Compilation (NEW in v0.11.0)
-| Command | What it does |
-|---------|-------------|
-| `isat tensor-parallel` | True tensor parallelism: split weight matrices across GPUs with all-reduce |
-| `isat graph-compile` | CUDA/HIP graph capture + replay for 20-47% decode throughput improvement |
+### Tier 2 — Model Engineering
 
-### Precision & Distillation (NEW in v0.11.0)
-| Command | What it does |
-|---------|-------------|
-| `isat amp-profile` | Per-layer precision profiling + Pareto-optimal mixed-precision search (DP/greedy/beam) |
-| `isat distill-train` | Live knowledge distillation: KL-divergence training loop, auto student creation |
+Tools for adapting, parallelizing, and optimizing models before deployment.
 
-### Architecture Surgery (NEW in v0.11.0)
-| Command | What it does |
-|---------|-------------|
-| `isat a2a` | Attention head pruning, width/depth shrinking, vocabulary pruning for domain deployment |
+| Command | Capability | How it works |
+|---------|-----------|--------------|
+| `isat lora` | **LoRA adapter runtime** | Hot-swap adapters at runtime, multi-LoRA routing, adapter fusion for zero-overhead inference. Weight merging via TIES-Merging (trim/elect/merge), DARE (drop-and-rescale), SLERP (spherical interpolation), Task Arithmetic, Model Soup. |
+| `isat tensor-parallel` | **True tensor parallelism** | Column-parallel QKV projections, row-parallel output projections, all-reduce synchronization. Auto-detects parallelizable layers from ONNX graph topology. |
+| `isat graph-compile` | **CUDA/HIP graph capture** | Captures inference graphs and replays them to eliminate kernel launch overhead. 20-47% decode throughput improvement. Includes graph region analysis (static vs dynamic ops). |
+| `isat amp-profile` | **Mixed-precision search** | Profiles every layer at FP32/FP16/INT8/INT4, then finds the Pareto-optimal precision assignment via dynamic programming, greedy, or beam search — minimizing latency under a user-defined MSE budget. |
+| `isat distill-train` | **Knowledge distillation** | Real training loop through ORT: teacher forward pass, student forward pass, KL-divergence + cross-entropy loss, numerical gradients, Adam optimizer in pure numpy. Auto-creates smaller student via depth/width reduction. |
+| `isat a2a` | **Architecture surgery** | Attention head pruning with importance scoring (magnitude/entropy/Taylor), width shrinking, depth shrinking (importance/uniform/first-last), vocabulary pruning for domain-specific deployment. |
+| `isat quantize` | **Advanced quantization** | INT4 weight-only (MatMulNBits), INT8 static QDQ, FP16 cast, mixed-precision, SmoothQuant with per-layer sensitivity analysis. |
+| `isat shard` | **Model sharding** | Graph-based splitting (balanced/layer/auto strategies) for multi-GPU or memory-constrained inference with pipeline-parallel execution. |
+| `isat merge` | **Model composition** | Chain (sequential) or parallel (concat/mean/max/sum aggregation) composition of multiple ONNX models. |
+| `isat onnx` | **Universal conversion** | One command converts from HuggingFace, PyTorch, TensorFlow, JAX, TFLite, or SafeTensors to optimized ONNX. |
 
-### Live Monitoring (NEW in v0.11.0)
-| Command | What it does |
-|---------|-------------|
-| `isat monitor-live` | Real-time anomaly detection daemon + ASCII TUI dashboard with sparkline trends |
+### Tier 3 — Production Operations
 
-### Model Conversion
-| Command | What it does |
-|---------|-------------|
-| `isat onnx` | Convert any model (PyTorch, TF, JAX, HuggingFace, TFLite, SafeTensors) to ONNX + auto-tune |
+Everything needed to deploy, monitor, secure, and validate models in production.
 
-### Quantization & Compression (NEW in v0.10.0)
-| Command | What it does |
-|---------|-------------|
-| `isat quantize` | Advanced quantization: INT4 (MatMulNBits), INT8 (static QDQ), FP16, mixed-precision, SmoothQuant |
+| Command | Capability | How it works |
+|---------|-----------|--------------|
+| `isat monitor-live` | **Real-time monitoring** | Daemon collects CPU/GPU/VRAM/latency/throughput metrics, detects anomalies (latency spikes, throughput drops, memory leaks, thermal throttling), triggers auto-remediation. ASCII TUI dashboard with sparkline trends. |
+| `isat test` | **Automated testing** | Determinism, numerical stability, edge cases, cross-provider comparison, memory leak detection. Golden test generation. JUnit XML output for CI. |
+| `isat benchmark-suite` | **Comprehensive benchmarks** | Latency (P50/P95/P99), throughput, memory profiling, scalability analysis across batch sizes. |
+| `isat encrypt` | **Model protection** | AES-256-GCM encryption, XOR obfuscation, LSB watermark fingerprinting, expiry dates. |
+| `isat safety` | **Content guardrails** | PII detection, toxicity filtering, jailbreak pattern matching, confidence thresholding. |
+| `isat cloud-deploy` | **One-command deployment** | Generates Dockerfile, Kubernetes manifests, SageMaker handler, Azure ML config, GCP Vertex config, FastAPI inference server. |
+| `isat explain` | **Explainability** | Feature importance (perturbation), gradient attribution (finite differences), sensitivity mapping, layer activations. |
+| `isat tune` | **Auto-tuning** | 7-dimension search across memory strategy, kernel backend, precision, graph transforms, batch size, threading, and execution provider. Bayesian optimization optional. |
 
-### Streaming Inference (NEW in v0.10.0)
-| Command | What it does |
-|---------|-------------|
-| `isat stream` | Token-by-token LLM inference with KV cache, nucleus sampling (top-k/top-p), benchmark mode |
+<details>
+<summary><strong>See all 76 commands</strong></summary>
 
-### Model Sharding & Merging (NEW in v0.10.0)
-| Command | What it does |
-|---------|-------------|
-| `isat shard` | Split large models into N shards for multi-GPU / memory-constrained inference |
-| `isat merge` | Merge/compose multiple ONNX models (chain or parallel with concat/mean/max/sum) |
+#### Auto-Tuning & Search
+`tune` · `profiles` · `init` · `batch` · `shapes`
 
-### Explainability (NEW in v0.10.0)
-| Command | What it does |
-|---------|-------------|
-| `isat explain` | Feature importance, gradient attribution, sensitivity mapping, layer activations |
+#### Model Analysis & Inspection
+`inspect` · `diff` · `fusion` · `attention` · `weight-sharing` · `visualize` · `scan` · `compat-matrix`
 
-### Comprehensive Benchmarking (NEW in v0.10.0)
-| Command | What it does |
-|---------|-------------|
-| `isat benchmark-suite` | Full benchmark: latency (P50/P95/P99), throughput, memory profiling, scalability |
+#### Benchmarking & Profiling
+`profile` · `llm-bench` · `compiler-compare` · `stress` · `leak-check` · `power` · `thermal` · `gpu-frag` · `warmup`
 
-### Model Security & Safety (NEW in v0.10.0)
-| Command | What it does |
-|---------|-------------|
-| `isat encrypt` | AES-256-GCM encryption, XOR obfuscation, LSB watermark fingerprinting, expiry dates |
-| `isat safety` | PII detection, toxicity filtering, jailbreak pattern detection, confidence checks |
+#### Model Optimization
+`optimize` · `prune` · `surgery` · `quant-sensitivity` · `distill`
 
-### Cloud Deployment (NEW in v0.10.0)
-| Command | What it does |
-|---------|-------------|
-| `isat cloud-deploy` | Generate Dockerfile, K8s manifests, SageMaker handler, Azure ML, GCP Vertex, FastAPI server |
+#### Production Deployment
+`serve` · `triton` · `canary` · `ensemble` · `guard` · `codegen`
 
-### Automated Testing (NEW in v0.10.0)
-| Command | What it does |
-|---------|-------------|
-| `isat test` | Determinism, numerical stability, edge cases, cross-provider, memory leaks, golden tests + JUnit |
+#### Monitoring & Operations
+`alerts` · `trace` · `drift` · `regression` · `replay`
 
-### Auto-Tuning & Search
-| Command | What it does |
-|---------|-------------|
-| `isat tune` | Auto-detect hardware + recommend + tune (works with or without a model) |
-| `isat profiles` | List available tuning profiles (edge, cloud, latency, etc.) |
-| `isat init` | Generate a default `isat.yaml` config file |
-| `isat batch` | Find optimal batch size (latency vs throughput tradeoff) |
-| `isat shapes` | Benchmark model across dynamic input shapes |
+#### Planning & Cost
+`cost` · `sla` · `recommend` · `migrate` · `memory`
 
-### Model Analysis & Inspection
-| Command | What it does |
-|---------|-------------|
-| `isat inspect` | Deep fingerprint a model without benchmarking |
-| `isat diff` | Structural diff between two ONNX models |
-| `isat fusion` | Analyze operator fusion (fused vs unfused ops) |
-| `isat attention` | Profile attention heads in transformer models |
-| `isat weight-sharing` | Detect shared/tied weights across layers |
-| `isat visualize` | Visualize ONNX graph (DOT, ASCII, histogram) |
-| `isat scan` | Security and compliance scan of ONNX model |
-| `isat compat-matrix` | Operator compatibility across providers |
+#### Infrastructure & Utilities
+`hwinfo` · `doctor` · `history` · `export` · `compare` · `abtest` · `snapshot` · `cache` · `zoo` · `download` · `registry` · `pipeline`
 
-### Benchmarking & Profiling
-| Command | What it does |
-|---------|-------------|
-| `isat profile` | Decompose latency into load/compile/inference phases |
-| `isat llm-bench` | LLM token throughput (TPS, TTFT, ITL with P95) |
-| `isat compiler-compare` | Benchmark same model across ALL execution providers |
-| `isat stress` | Sustained/burst/ramp stress testing |
-| `isat leak-check` | Detect memory leaks during inference |
-| `isat power` | Profile power efficiency (perf/watt, energy/inference) |
-| `isat thermal` | Thermal throttle detection during inference |
-| `isat gpu-frag` | GPU memory fragmentation analysis |
-| `isat warmup` | Analyze warmup behavior, find optimal iterations |
-
-### Model Optimization
-| Command | What it does |
-|---------|-------------|
-| `isat optimize` | Optimize ONNX model (simplify, quantize, export) |
-| `isat prune` | Prune model weights (magnitude/percentage/global) |
-| `isat surgery` | ONNX graph surgery (remove/rename/extract nodes) |
-| `isat quant-sensitivity` | Per-layer quantization sensitivity analysis |
-| `isat distill` | Knowledge distillation planning for teacher models |
-
-### Production Deployment
-| Command | What it does |
-|---------|-------------|
-| `isat serve` | Launch REST API server (FastAPI) |
-| `isat triton` | Generate Triton Inference Server config |
-| `isat canary` | Canary deployment between two model versions |
-| `isat ensemble` | Run model ensemble with aggregation |
-| `isat guard` | Validate inference inputs against model schema |
-| `isat codegen` | Generate standalone C++ inference code |
-
-### Monitoring & Operations
-| Command | What it does |
-|---------|-------------|
-| `isat alerts` | Inference alert rules engine (P99, error rate, GPU temp) |
-| `isat trace` | OpenTelemetry-compatible request tracing |
-| `isat drift` | Monitor output quality and detect confidence drift |
-| `isat regression` | Performance regression detection across versions |
-| `isat replay` | Record or replay inference requests |
-
-### Planning & Cost
-| Command | What it does |
-|---------|-------------|
-| `isat cost` | Estimate cloud inference cost |
-| `isat sla` | Validate inference against SLA requirements |
-| `isat recommend` | Hardware recommendation for a model |
-| `isat migrate` | Generate migration plan between providers |
-| `isat memory` | Estimate memory usage and predict OOM risk |
-
-### Infrastructure & Utilities
-| Command | What it does |
-|---------|-------------|
-| `isat hwinfo` | Print hardware fingerprint |
-| `isat doctor` | Pre-flight system health and compatibility check |
-| `isat history` | Show past tuning results from database |
-| `isat export` | Re-generate reports from database |
-| `isat compare` | Compare two configs with significance testing |
-| `isat abtest` | A/B test two models with statistical rigor |
-| `isat snapshot` | Capture environment state for reproducibility |
-| `isat cache` | Manage compilation cache (MIGraphX/ORT) |
-| `isat zoo` | List pre-tuned model configurations |
-| `isat download` | Download ONNX model by name or URL |
-| `isat registry` | Model version registry (register, promote, diff) |
-| `isat pipeline` | Profile multi-model inference pipeline |
+</details>
 
 ---
 
-## Supported Conversion Formats (`isat onnx`)
+## Validated Models
 
-| Source Format | Extensions / IDs | Conversion Backend |
-|---------------|-----------------|-------------------|
-| **HuggingFace** | `org/model-name`, `hf://...` | `optimum.exporters.onnx` (primary), `torch.onnx.export` (fallback) |
-| **PyTorch** | `.pt`, `.pth`, `.bin` | `torch.onnx.export` |
-| **TensorFlow** | `.pb`, `SavedModel/` dirs | `tf2onnx` |
-| **TFLite** | `.tflite` | `tflite2onnx` / `tf2onnx` |
-| **JAX** | `.jax`, `.msgpack` | `jax2onnx` / `jax2tf` + `tf2onnx` |
-| **SafeTensors** | `.safetensors` | `safetensors` + `torch.onnx.export` |
-| **ONNX** | `.onnx` | Passthrough (optional `onnxsim` simplification) |
+Every release is tested end-to-end against real HuggingFace models:
 
-### Validated Models
-
-| Model | Type | Params | Status |
-|-------|------|--------|--------|
-| `google/vit-base-patch16-224` | Vision Transformer | 86.6M | PASS |
-| `openai/clip-vit-base-patch32` | Multimodal (CLIP) | 151.3M | PASS |
-| `facebook/detr-resnet-50` | Object Detection | 41.6M | PASS |
-| `Salesforce/blip-image-captioning-base` | Image Captioning | 196.2M | PASS |
-| `distilgpt2` | LLM (small) | 81.9M | PASS |
-| `facebook/opt-1.3b` | LLM (1.3B) | 1,315.7M | PASS |
+| Model | Type | Parameters | Status |
+|-------|------|------------|--------|
+| `google/vit-base-patch16-224` | Vision Transformer | 86.6M | Pass |
+| `openai/clip-vit-base-patch32` | Multimodal (CLIP) | 151.3M | Pass |
+| `facebook/detr-resnet-50` | Object Detection | 41.6M | Pass |
+| `Salesforce/blip-image-captioning-base` | Image Captioning | 196.2M | Pass |
+| `distilgpt2` | Language Model | 81.9M | Pass |
+| `facebook/opt-1.3b` | Large Language Model | 1,315.7M | Pass |
 
 ---
 
 ## Installation
 
 ```bash
-# From PyPI
 pip install isat-tuner
+```
 
-# From GitHub (latest)
-pip install git+https://github.com/SID-Devu/isat-tuner.git
+<details>
+<summary><strong>Optional dependencies and platform-specific installs</strong></summary>
 
-# With all optional features
+```bash
+# All optional features
 pip install "isat-tuner[all]"
 
-# Model conversion (HuggingFace, PyTorch, TensorFlow)
-pip install "isat-tuner[convert]"       # All conversion backends
-pip install "isat-tuner[convert-hf]"    # HuggingFace only (optimum)
-pip install "isat-tuner[convert-pt]"    # PyTorch only
-pip install "isat-tuner[convert-tf]"    # TensorFlow only
+# Model conversion
+pip install "isat-tuner[convert]"       # All backends
+pip install "isat-tuner[convert-hf]"    # HuggingFace (optimum)
+pip install "isat-tuner[convert-pt]"    # PyTorch
+pip install "isat-tuner[convert-tf]"    # TensorFlow
 
-# New v0.10.0 features
-pip install "isat-tuner[stream]"        # Streaming LLM inference (transformers)
+# Feature-specific
+pip install "isat-tuner[stream]"        # Streaming inference (transformers)
 pip install "isat-tuner[encrypt]"       # Model encryption (cryptography)
 
 # Platform-specific
-pip install "isat-tuner[rocm]"      # ROCm GPU support
-pip install "isat-tuner[cuda]"      # NVIDIA CUDA support
-pip install "isat-tuner[server]"    # REST API server
-pip install "isat-tuner[bayesian]"  # Bayesian optimization (scipy)
+pip install "isat-tuner[rocm]"          # AMD ROCm
+pip install "isat-tuner[cuda]"          # NVIDIA CUDA
+pip install "isat-tuner[server]"        # FastAPI server
+pip install "isat-tuner[bayesian]"      # Bayesian optimization
+
+# From GitHub (latest)
+pip install git+https://github.com/SID-Devu/isat-tuner.git
 
 # Development
 git clone https://github.com/SID-Devu/isat-tuner.git
 cd isat && pip install -e ".[dev,all]"
 ```
 
+> **Note:** On modern Linux (Ubuntu 23.04+, Debian 12+), bare `pip install` may be blocked by [PEP 668](https://peps.python.org/pep-0668/). Use `pipx install isat-tuner` instead.
+
+</details>
+
 ---
 
 ## Quick Start
 
-### Convert Any Model to ONNX
+### Convert any model to ONNX
+
 ```bash
-# HuggingFace models (auto-detects architecture)
-isat onnx google/vit-base-patch16-224               # Vision Transformer
-isat onnx openai/clip-vit-base-patch32               # Multimodal (CLIP)
-isat onnx facebook/detr-resnet-50                    # Object Detection
-isat onnx Salesforce/blip-image-captioning-base      # Image Captioning
-isat onnx distilgpt2                                 # LLM (small)
-isat onnx facebook/opt-1.3b                          # LLM (1.3B params)
-
-# Local models
-isat onnx model.pt --input-shape 1,3,224,224         # PyTorch
-isat onnx saved_model/                               # TensorFlow SavedModel
-isat onnx model.tflite                               # TFLite
-isat onnx weights.safetensors --input-shape 1,3,224,224  # SafeTensors
-
-# Convert only (skip auto-tune)
-isat onnx facebook/opt-1.3b --no-tune
-
-# Simplify ONNX graph after conversion
-isat onnx model.pt --simplify --input-shape 1,3,224,224
+isat onnx google/vit-base-patch16-224          # HuggingFace Vision Transformer
+isat onnx facebook/opt-1.3b                    # HuggingFace LLM (1.3B params)
+isat onnx model.pt --input-shape 1,3,224,224   # Local PyTorch
+isat onnx saved_model/                         # TensorFlow SavedModel
+isat onnx model.tflite                         # TFLite
 ```
 
-### Auto-Tune & Benchmark
+### Auto-tune for your hardware
+
 ```bash
-# One-command auto-tune
-isat tune model.onnx --warmup 3 --runs 5 --cooldown 60
-
-# Use a deployment profile
-isat tune model.onnx --profile edge
-isat tune model.onnx --profile cloud
-
-# Bayesian optimization (smarter than grid search)
-isat tune model.onnx --bayesian --max-configs 20
-
-# Hardware-only detection (no model needed)
-isat tune
+isat tune model.onnx                           # Auto-detect + optimize
+isat tune model.onnx --profile cloud           # Cloud deployment profile
+isat tune model.onnx --bayesian --max-configs 20  # Bayesian search
 ```
 
-### Analyze & Optimize
+### Serve with continuous batching
+
 ```bash
-# Inspect model
-isat inspect model.onnx
+isat serve-llm model.onnx --tokenizer gpt2 --port 8000
 
-# Check your hardware
-isat hwinfo
+# OpenAI-compatible API
+curl http://localhost:8000/v1/completions \
+  -d '{"prompt": "Hello", "max_tokens": 50, "stream": true}'
+```
 
-# System health check
-isat doctor
+### Speculative decoding (2-4x speedup)
 
-# LLM token benchmarking
+```bash
+isat speculate target.onnx --draft draft.onnx --benchmark
+isat speculate target.onnx --mode self         # Self-speculation (no draft needed)
+```
+
+### Grammar-constrained generation
+
+```bash
+isat constrain model.onnx --schema '{"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer"}}}'
+isat constrain model.onnx --regex '[0-9]{3}-[0-9]{2}-[0-9]{4}'
+isat constrain model.onnx --grammar grammar.gbnf
+```
+
+### LoRA adapter management
+
+```bash
+isat lora base.onnx --adapter lora_weights.npz --action fuse -o fused.onnx
+isat lora base.onnx --action merge --merge-method ties --merge-models a.onnx b.onnx c.onnx
+```
+
+### Quantize and profile precision
+
+```bash
+isat quantize model.onnx --method int4 --block-size 128
+isat amp-profile model.onnx --action optimize --max-mse 0.001 -o mixed.onnx
+```
+
+### Architecture surgery
+
+```bash
+isat a2a model.onnx --action analyze
+isat a2a model.onnx --action prune-heads --ratio 0.5 --method magnitude -o pruned.onnx
+isat a2a model.onnx --action shrink-depth --ratio 0.5 -o smaller.onnx
+```
+
+### Knowledge distillation
+
+```bash
+isat distill-train teacher.onnx --epochs 20 --temperature 4.0 -o student.onnx
+```
+
+### Deploy to cloud
+
+```bash
+isat cloud-deploy model.onnx --output-dir deploy/   # Docker + K8s + SageMaker + Azure + GCP
+```
+
+### Monitor in production
+
+```bash
+isat monitor-live --model model.onnx                 # TUI dashboard + anomaly detection
+isat test model.onnx --junit                         # Automated testing with CI output
+```
+
+<details>
+<summary><strong>More examples: benchmarking, security, explainability</strong></summary>
+
+```bash
+# Comprehensive benchmarking
+isat benchmark-suite model.onnx --batch-sizes 1,4,16,64
 isat llm-bench model.onnx --seq-lengths 32,64,128,256
 
-# Compare across all available providers
-isat compiler-compare model.onnx
+# Model security
+isat encrypt model.onnx -o encrypted.onnx --method encrypt --password "secret"
+isat encrypt model.onnx -o fingerprinted.onnx --method fingerprint --owner "ACME Corp"
+isat safety --input-text "check this text for PII and toxicity"
 
-# Prune a model
-isat prune model.onnx --strategy magnitude --sparsity 0.5
-
-# Analyze operator fusion
-isat fusion model.onnx
-
-# Generate C++ inference code
-isat codegen model.onnx --output-dir cpp_build/
-```
-
-### Deploy & Monitor
-```bash
-# Canary deployment (safe model rollout)
-isat canary baseline.onnx candidate.onnx
-
-# Monitor output drift
-isat drift model.onnx
-
-# Graph surgery (remove Identity/Dropout nodes)
-isat surgery model.onnx --remove-op Identity --remove-op Dropout
-
-# Launch REST API
-isat serve --port 8000
-```
-
-### Quantize (NEW in v0.10.0)
-```bash
-# Auto-select best quantization method
-isat quantize model.onnx
-
-# INT8 static quantization (CNNs)
-isat quantize model.onnx --method int8
-
-# INT4 weight-only quantization (LLMs)
-isat quantize model.onnx --method int4 --block-size 128
-
-# SmoothQuant (transformers)
-isat quantize model.onnx --method smooth --alpha 0.5
-
-# Sensitivity analysis (find which layers to keep in FP16)
-isat quantize model.onnx --sensitivity
-```
-
-### Stream LLM Inference (NEW in v0.10.0)
-```bash
-# Token-by-token generation
-isat stream model.onnx --prompt "The future of AI is" --tokenizer gpt2
-
-# Benchmark streaming performance
-isat stream model.onnx --tokenizer gpt2 --benchmark
-```
-
-### Shard & Merge (NEW in v0.10.0)
-```bash
-# Analyze model for sharding
-isat shard large_model.onnx --analyze
-
-# Split into 4 shards
-isat shard large_model.onnx --num-shards 4 --strategy balanced
-
-# Merge two models into a pipeline
-isat merge encoder.onnx decoder.onnx -o pipeline.onnx --mode chain
-
-# Parallel ensemble merge
-isat merge modelA.onnx modelB.onnx -o ensemble.onnx --mode parallel --aggregation mean
-```
-
-### Explain & Test (NEW in v0.10.0)
-```bash
-# Model explainability
+# Explainability
 isat explain model.onnx --method perturbation
 
-# Full benchmark suite
-isat benchmark-suite model.onnx --batch-sizes 1,4,16,64
+# Sharding and merging
+isat shard large_model.onnx --num-shards 4 --strategy balanced
+isat merge encoder.onnx decoder.onnx -o pipeline.onnx --mode chain
 
-# Automated testing with JUnit output
-isat test model.onnx --junit
+# CI/CD gate
+isat tune model.onnx --gate-latency 50 --gate-throughput 100
+echo $?  # 0 = pass, 1 = fail
 
-# Generate golden test file, then verify later
-isat test model.onnx --generate-golden --golden golden.npz
-isat test model.onnx --suite golden --golden golden.npz
+# CUDA/HIP graph capture
+isat graph-compile model.onnx --action benchmark
+
+# Tensor parallelism
+isat tensor-parallel model.onnx --num-gpus 4 --action split
 ```
 
-### Encrypt & Safety (NEW in v0.10.0)
-```bash
-# Encrypt model weights
-isat encrypt model.onnx -o model_encrypted.onnx --method encrypt --password "secret"
-
-# Fingerprint model for IP tracking
-isat encrypt model.onnx -o model_fp.onnx --method fingerprint --owner "ACME Corp"
-
-# Safety scan on text
-isat safety --input-text "my email is john@example.com"
-```
-
-### Cloud Deploy (NEW in v0.10.0)
-```bash
-# Generate all deployment artifacts
-isat cloud-deploy model.onnx --output-dir deploy/
-
-# Docker + K8s only
-isat cloud-deploy model.onnx --target docker --output-dir deploy/
-isat cloud-deploy model.onnx --target kubernetes --replicas 4 --gpu
-```
+</details>
 
 ---
 
-## Search Dimensions
+## Using as a Library
 
-### 1. Memory Strategy
-| Config | Environment | When to use |
-|--------|-------------|-------------|
-| `xnack0_default` | `HSA_XNACK=0` | Discrete GPUs, no demand paging |
-| `xnack1_default` | `HSA_XNACK=1` | APUs, unified memory |
-| `xnack1_coarse_grain` | XNACK=1 + coarse-grain | Large models on APU |
-| `xnack1_oversubscribe` | XNACK=1 + queue limit | Models exceeding VRAM |
+```python
+from isat.converter.engine import convert
+from isat.auto_detect.detector import detect_hardware
+from isat.auto_detect.recommender import generate_recommendations
 
-### 2. Kernel Backend
-| Config | Environment | When to use |
-|--------|-------------|-------------|
-| `mlir_default` | (default) | General-purpose, fused kernels |
-| `rocblas_explicit` | `MIGRAPHX_DISABLE_MLIR=1` | GEMM-heavy models |
-| `hipblaslt_explicit` | `MIGRAPHX_SET_GEMM_PROVIDER=hipblaslt` | Latest GEMM tuning |
+# Convert any model to ONNX
+result = convert("google/vit-base-patch16-224", output_dir="./output")
 
-### 3. Precision
-| Config | Method | Typical speedup |
-|--------|--------|-----------------|
-| `fp32_native` | Original | Baseline |
-| `fp16_migraphx` | MIGraphX built-in | 1.5-2x |
-| `int8_qdq` | ORT static quantization | 2-4x |
+# Auto-detect hardware and get recommendations
+hw = detect_hardware()
+report = generate_recommendations(hw, result.onnx_path)
+```
 
-### 4. Graph Transforms
-| Config | Transform | Effect |
-|--------|-----------|--------|
-| `raw_opt99` | None + full ORT opt | Default |
-| `sim_opt99` | onnxsim + full ORT opt | Remove dead ops |
-| `pinned_opt99` | Freeze dynamic dims | Better kernel selection |
+<details>
+<summary><strong>Full API reference</strong></summary>
 
-### 5. Batch Size
-Auto-explores powers of 2 up to GPU memory limit.
+```python
+# v0.11.0 — LLM Engine
+from isat.speculative.engine import SpeculativeDecoder, SelfSpeculativeDecoder, MedusaDecoder
+from isat.llm_server.server import LLMServer, create_app, serve_llm
+from isat.constrained.grammar import ConstrainedGenerator, constrained_generate
 
-### 6. Thread Tuning
-Explores inter/intra thread counts and sequential vs parallel execution modes.
+# v0.11.0 — Model Engineering
+from isat.lora.adapter import LoRARuntime, MultiLoRARouter
+from isat.lora.merger import WeightMerger
+from isat.parallel.tensor_parallel import TensorParallelizer, TensorParallelRunner
+from isat.graph_compile.capture import GraphCapture, GraphRegionAnalyzer
+from isat.amp.profiler import PrecisionProfiler
+from isat.amp.optimizer import MixedPrecisionOptimizer
+from isat.distill_train.trainer import DistillationTrainer
+from isat.arch_convert.converter import ArchitectureConverter
 
-### 7. Execution Provider (Multi-Platform)
-Auto-detects available providers: MIGraphX, CUDA, TensorRT, OpenVINO, ROCm, DirectML, CPU.
+# v0.11.0 — Production
+from isat.live_monitor.daemon import InferenceMonitor
+from isat.live_monitor.dashboard import MonitorDashboard
+
+# v0.10.0
+from isat.quantize.quantizer import ModelQuantizer, quantize_model
+from isat.stream.generator import StreamingGenerator
+from isat.shard.splitter import ModelSharder
+from isat.merge.merger import ModelMerger
+from isat.explain.explainer import ModelExplainer
+from isat.benchmark_suite.suite import BenchmarkSuite
+from isat.encrypt.protector import ModelProtector
+from isat.safety.guardrails import SafetyGuard
+from isat.cloud_deploy.deployer import CloudDeployer
+from isat.model_test.tester import ModelTester
+
+# Core
+from isat.fingerprint import fingerprint_hardware, fingerprint_model
+from isat.search import SearchEngine
+from isat.pruning.pruner import ModelPruner
+from isat.fusion.analyzer import FusionAnalyzer
+```
+
+</details>
+
+---
+
+## How the Auto-Tuner Works
+
+ISAT explores a 7-dimension search space that would take hours to test manually:
+
+| Dimension | Search Space | Impact |
+|-----------|-------------|--------|
+| Memory strategy | XNACK on/off, coarse-grain, oversubscribe | Up to 30% on APUs |
+| Kernel backend | MLIR, rocBLAS, hipBLASLt | 10-25% on GEMM-heavy models |
+| Precision | FP32, FP16, INT8, INT4 | 2-4x throughput |
+| Graph transforms | Raw, simplified, pinned dimensions | 5-20% latency reduction |
+| Batch size | Powers of 2 up to GPU memory limit | Linear throughput scaling |
+| Thread tuning | Inter/intra op threads, execution mode | CPU-side parallelism |
+| Execution provider | MIGraphX, CUDA, TensorRT, OpenVINO, ROCm, DirectML, CPU | Provider-specific optimizations |
+
+A single wrong choice can leave **40%+ performance on the table**. ISAT tests combinations automatically and reports the best configuration.
 
 ---
 
 ## Deployment Profiles
 
-| Profile | Warmup | Runs | Cooldown | Priority | Use case |
-|---------|--------|------|----------|----------|----------|
-| `edge` | 3 | 10 | 30s | Latency | IoT, mobile, embedded |
-| `cloud` | 5 | 20 | 120s | Throughput | Serving, batch processing |
-| `latency` | 5 | 30 | 60s | P99 | Real-time inference |
-| `throughput` | 3 | 15 | 120s | FPS | Max batch throughput |
-| `power` | 3 | 10 | 60s | Perf/watt | Battery, thermal-constrained |
-| `quick` | 1 | 3 | 15s | Latency | Fast exploration |
-| `exhaustive` | 5 | 50 | 180s | Latency | Leave no stone unturned |
-| `apu` | 3 | 10 | 60s | Latency | APU-specific optimization |
+| Profile | Focus | Use Case |
+|---------|-------|----------|
+| `edge` | Latency | IoT, mobile, embedded |
+| `cloud` | Throughput | Serving, batch processing |
+| `latency` | P99 | Real-time inference |
+| `throughput` | FPS | Max batch throughput |
+| `power` | Perf/watt | Battery, thermal-constrained |
+| `quick` | Fast | Rapid exploration |
+| `exhaustive` | Complete | Leave no stone unturned |
+| `apu` | APU-specific | AMD APU optimization |
 
 ---
 
-## Output & Reports
+## Architecture
 
-| File | Description |
-|------|-------------|
-| `isat_report.html` | Interactive HTML dashboard |
-| `isat_report.json` | Machine-readable results for automation |
-| `best_config.sh` | Shell script -- `source` it to apply best env vars |
-| `isat_results.db` | SQLite database of all historical results |
-| `config.pbtxt` | Triton Inference Server config |
-| `isat.prom` | Prometheus metrics |
-| `traces_*.json` | OpenTelemetry-compatible trace export |
-| `isat_inference.cpp` | Generated C++ inference code |
+```
+isat/                               30,000+ lines of Python
+├── cli.py                          76 CLI commands
+│
+├── speculative/                    Speculative decoding engine
+├── llm_server/                     Continuous batching + PagedAttention
+├── constrained/                    Grammar FSM (NFA/DFA/PDA)
+├── lora/                           LoRA runtime + TIES/DARE/SLERP
+├── parallel/                       Tensor parallelism + all-reduce
+├── graph_compile/                  CUDA/HIP graph capture
+├── amp/                            Mixed-precision profiling + optimization
+├── distill_train/                  Knowledge distillation training
+├── arch_convert/                   Architecture surgery
+├── live_monitor/                   Anomaly detection + TUI dashboard
+│
+├── converter/                      Universal model-to-ONNX conversion
+├── quantize/                       INT4/INT8/FP16/SmoothQuant
+├── stream/                         Token-by-token LLM generation
+├── shard/                          Model sharding + pipeline execution
+├── merge/                          Model merging + composition
+├── explain/                        Explainability tools
+├── benchmark_suite/                Latency/throughput/memory benchmarks
+├── encrypt/                        AES-256 encryption + watermarking
+├── safety/                         PII/toxicity/jailbreak guardrails
+├── cloud_deploy/                   Docker/K8s/SageMaker/Azure/GCP
+├── model_test/                     Automated testing + JUnit output
+│
+├── auto_detect/                    Hardware detection + recommendations
+├── fingerprint/                    Hardware + model fingerprinting
+├── search/                         7-dimension search + Bayesian opt
+├── benchmark/                      Runner, stats, thermal, multi-GPU
+├── analysis/                       Outliers, significance, Pareto
+├── server/                         FastAPI REST API
+├── ... (20+ more modules)          Pruning, fusion, canary, tracing, etc.
+└── utils/                          sysfs, rocm, onnx utilities
+```
 
 ---
 
-## REST API Server
+## REST API
 
 ```bash
 isat serve --port 8000
@@ -541,15 +463,25 @@ isat serve --port 8000
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/tune` | POST | Submit a tuning job |
-| `/api/v1/jobs` | GET | List all jobs |
-| `/api/v1/jobs/{id}` | GET | Get job status + results |
-| `/api/v1/jobs/{id}/report` | GET | Get JSON report |
-| `/api/v1/jobs/{id}/report/html` | GET | Get HTML dashboard |
-| `/api/v1/inspect` | POST | Fingerprint a model |
-| `/api/v1/hardware` | GET | Get hardware fingerprint |
-| `/api/v1/history` | GET | Query historical results |
+| `/api/v1/tune` | POST | Submit tuning job |
+| `/api/v1/jobs/{id}` | GET | Job status + results |
+| `/api/v1/jobs/{id}/report/html` | GET | Interactive HTML dashboard |
+| `/api/v1/inspect` | POST | Model fingerprint |
+| `/api/v1/hardware` | GET | Hardware fingerprint |
 | `/health` | GET | Health check |
+
+---
+
+## CI/CD Integration
+
+```bash
+# Gate deployments on performance thresholds
+isat tune model.onnx --gate-latency 50 --gate-throughput 100
+echo $?  # 0 = pass, 1 = fail
+
+# Automated model testing with JUnit XML
+isat test model.onnx --junit --output-dir test-results/
+```
 
 ---
 
@@ -566,235 +498,18 @@ docker run --device /dev/kfd --device /dev/dri --group-add video \
 
 ---
 
-## Using as a Library
+## Generated Artifacts
 
-```python
-from isat.converter.engine import convert, detect_format
-from isat.auto_detect.detector import detect_hardware
-from isat.auto_detect.recommender import generate_recommendations, format_report
-from isat.auto_detect.script_gen import save_script
-from isat.fingerprint import fingerprint_hardware, fingerprint_model
-from isat.search import SearchEngine
-from isat.pruning.pruner import ModelPruner
-from isat.fusion.analyzer import FusionAnalyzer
-from isat.guard.validator import InputGuard
-from isat.inference_cache.cache import InferenceCache
-
-# Convert any model to ONNX
-result = convert("google/vit-base-patch16-224", output_dir="./output")
-print(result.onnx_path, result.size_mb)
-
-# Auto-detect hardware + generate recommendations
-hw = detect_hardware()
-report = generate_recommendations(hw, result.onnx_path)
-print(format_report(report))
-
-# Generate runnable inference script
-script_path = save_script(hw, result.onnx_path, "./output")
-
-# Auto-tune
-hw_fp = fingerprint_hardware()
-model_fp = fingerprint_model("model.onnx")
-engine = SearchEngine(hw_fp, model_fp, warmup=3, runs=5, cooldown=60)
-candidates = engine.generate_candidates()
-
-# Prune a model
-pruner = ModelPruner("model.onnx")
-result = pruner.prune(strategy="magnitude", sparsity=0.5)
-
-# Analyze fusion
-analyzer = FusionAnalyzer("model.onnx")
-report = analyzer.analyze()
-
-# Validate inputs before inference
-guard = InputGuard(model_path="model.onnx")
-result = guard.validate({"input": my_tensor})
-
-# Cache inference results
-cache = InferenceCache(max_memory_entries=1000, disk_cache_dir="./cache")
-
-# v0.10.0 APIs
-from isat.quantize.quantizer import quantize_model, ModelQuantizer
-from isat.stream.generator import StreamingGenerator
-from isat.shard.splitter import shard_model, ModelSharder
-from isat.merge.merger import merge_models, ModelMerger
-from isat.explain.explainer import explain_model, ModelExplainer
-from isat.benchmark_suite.suite import run_benchmark_suite, BenchmarkSuite
-from isat.encrypt.protector import protect_model, ModelProtector
-from isat.safety.guardrails import SafetyGuard
-from isat.cloud_deploy.deployer import deploy_model, CloudDeployer
-from isat.model_test.tester import test_model, ModelTester
-
-# Quantize (auto-selects best method)
-result = quantize_model("model.onnx", "model_q.onnx", method="auto")
-print(result.compression_ratio)
-
-# Stream LLM tokens
-gen = StreamingGenerator("llm.onnx", max_length=512)
-tokens = gen.generate_text("Hello world", tokenizer_name="gpt2")
-
-# Safety check
-guard = SafetyGuard()
-report = guard.run_all(input_text="user input here")
-
-# Automated testing
-tester = ModelTester("model.onnx")
-results = tester.run_all()
-print(f"{results.passed}/{results.total_tests} passed")
-
-# Cloud deployment
-deployer = CloudDeployer("model.onnx")
-deployer.generate_all("deploy_output/")
-```
-
----
-
-## CI/CD Integration
-
-```bash
-# Fail CI if latency > 50ms or throughput < 100 fps
-isat tune model.onnx --gate-latency 50 --gate-throughput 100
-echo $?  # 0 = pass, 1 = fail
-```
-
----
-
-## Architecture
-
-```
-isat/
-├── cli.py                 # 76 subcommands
-├── converter/             # Universal model-to-ONNX conversion engine
-│   ├── engine.py          #   Format detection + dispatch
-│   └── backends.py        #   HuggingFace, PyTorch, TF, JAX, TFLite, SafeTensors
-├── quantize/              # Advanced quantization engine (v0.10.0)
-│   └── quantizer.py       #   INT4/INT8/FP16/mixed/SmoothQuant
-├── stream/                # Streaming LLM inference (v0.10.0)
-│   └── generator.py       #   Token generation with KV cache
-├── shard/                 # Model sharding (v0.10.0)
-│   └── splitter.py        #   Graph splitting + pipeline runner
-├── merge/                 # Model merging (v0.10.0)
-│   └── merger.py          #   Chain/parallel composition
-├── explain/               # Explainability (v0.10.0)
-│   └── explainer.py       #   Feature importance, gradient, sensitivity
-├── benchmark_suite/       # Comprehensive benchmarks (v0.10.0)
-│   └── suite.py           #   Latency/throughput/memory/scalability
-├── encrypt/               # Model protection (v0.10.0)
-│   └── protector.py       #   AES-256, fingerprint, obfuscation
-├── safety/                # Safety guardrails (v0.10.0)
-│   └── guardrails.py      #   PII, toxicity, jailbreak detection
-├── cloud_deploy/          # Cloud deployment (v0.10.0)
-│   └── deployer.py        #   Docker/K8s/SageMaker/Azure/GCP
-├── model_test/            # Automated testing (v0.10.0)
-│   └── tester.py          #   Determinism, stability, golden tests
-├── speculative/           # Speculative decoding engine (v0.11.0)
-│   └── engine.py          #   Draft-verify, self-speculation, Medusa
-├── llm_server/            # Continuous batching LLM server (v0.11.0)
-│   ├── kv_pool.py         #   PagedAttention KV cache pool
-│   ├── scheduler.py       #   Iteration-level request scheduler
-│   └── server.py          #   OpenAI-compatible FastAPI server
-├── constrained/           # Grammar-constrained generation (v0.11.0)
-│   ├── fsm.py             #   NFA/DFA/PDA for token masking
-│   └── grammar.py         #   JSON schema, regex, GBNF generator
-├── lora/                  # LoRA adapter runtime (v0.11.0)
-│   ├── adapter.py         #   Hot-swap, multi-LoRA, fusion
-│   └── merger.py          #   TIES/DARE/SLERP/Task Arithmetic
-├── parallel/              # Tensor parallelism (v0.11.0)
-│   ├── tensor_parallel.py #   Column/row-parallel weight splitting
-│   └── comm.py            #   Multi-GPU communication primitives
-├── graph_compile/         # CUDA/HIP graph capture (v0.11.0)
-│   └── capture.py         #   Graph capture, replay, region analysis
-├── amp/                   # Mixed precision profiling (v0.11.0)
-│   ├── profiler.py        #   Per-layer precision benchmarking
-│   └── optimizer.py       #   Pareto-optimal precision search
-├── distill_train/         # Knowledge distillation (v0.11.0)
-│   └── trainer.py         #   KL-div training loop, student builder
-├── arch_convert/          # Architecture surgery (v0.11.0)
-│   └── converter.py       #   Head pruning, width/depth shrinking
-├── live_monitor/          # Production monitoring (v0.11.0)
-│   ├── daemon.py          #   Anomaly detection + remediation
-│   └── dashboard.py       #   ASCII TUI with sparkline trends
-├── auto_detect/           # Hardware auto-detection + inference recommendations
-│   ├── detector.py        #   Cross-platform GPU/CPU detection
-│   ├── recommender.py     #   Vendor-specific recipe generation
-│   └── script_gen.py      #   Runnable Python inference script generator
-├── fingerprint/           # Hardware + model fingerprinting
-├── search/                # 7-dimension search engine + Bayesian optimization
-├── benchmark/             # Runner, stats, thermal monitoring, multi-GPU
-├── analysis/              # Outliers, significance, Pareto, regression
-├── pruning/               # Magnitude/percentage/global weight pruning
-├── distillation/          # Knowledge distillation planning
-├── fusion/                # Operator fusion analysis
-├── attention/             # Transformer attention head profiling
-├── surgery/               # ONNX graph surgery (remove/rename/extract)
-├── guard/                 # Input validation and schema enforcement
-├── ensemble/              # Multi-model ensemble with aggregation
-├── canary/                # Canary deployment with auto-rollback
-├── alerts/                # Alert rules engine (P99, error rate, temp)
-├── tracing/               # OpenTelemetry-compatible request tracing
-├── inference_cache/       # LRU + disk inference result caching
-├── replay/                # Record and replay inference requests
-├── output_monitor/        # Confidence drift detection (KS test)
-├── llm_bench/             # LLM token throughput (TPS, TTFT, ITL)
-├── compiler_compare/      # Cross-provider benchmark comparison
-├── codegen/               # ONNX to C++ code generator
-├── weight_analysis/       # Weight sharing detection
-├── continuous_profiler/   # Always-on production profiling
-├── gpu_frag/              # GPU memory fragmentation analysis
-├── batching/              # Dynamic request batching engine
-├── scanner/               # ONNX security/compliance scanner
-├── compat_matrix/         # Operator compatibility matrix
-├── thermal/               # Thermal throttle detection
-├── quant_sensitivity/     # Per-layer quantization sensitivity
-├── pipeline/              # Multi-model pipeline optimizer
-├── recommend/             # Hardware recommendation engine
-├── registry/              # Model version registry
-├── regression/            # Performance regression detector
-├── optimizer/             # Graph transforms + quantization
-├── profiler/              # Latency decomposition
-├── cost/                  # Cloud cost estimation
-├── sla/                   # SLA validation
-├── memory/                # Memory planning + OOM prediction
-├── power/                 # Power efficiency profiling
-├── health/                # System health checks
-├── cache/                 # Compilation cache management
-├── migration/             # Provider migration planning
-├── warmup/                # Warmup analysis
-├── shapes/                # Dynamic shape benchmarking
-├── hub/                   # Model download from HuggingFace/ONNX Zoo
-├── scheduler/             # Adaptive batch scheduling
-├── snapshot/              # Environment snapshotting
-├── abtesting/             # A/B testing framework
-├── visualizer/            # Graph visualization (DOT, ASCII)
-├── stress/                # Stress testing + memory leak detection
-├── notifications/         # Webhook, Slack, console notifications
-├── server/                # FastAPI REST API
-├── integrations/          # Triton, Prometheus, CI/CD
-├── database/              # SQLite results database
-├── report/                # JSON, HTML, console reports
-├── config/                # YAML/JSON config loader
-├── profiles/              # 8 deployment profiles
-├── model_zoo.py           # Pre-tuned model configurations
-├── plugins.py             # Plugin system with lifecycle hooks
-├── retry.py               # Exponential backoff retry logic
-└── utils/                 # sysfs, rocm, onnx utilities
-```
-
----
-
-## Requirements
-
-- Python >= 3.9
-- `onnxruntime` (CPU), `onnxruntime-rocm` (ROCm), or `onnxruntime-gpu` (CUDA)
-- `onnx`, `numpy`
-
-Optional:
-- **Conversion**: `optimum[exporters]`, `torch`, `tensorflow`, `tf2onnx`, `safetensors`, `onnxsim`
-- **Streaming**: `transformers` (for tokenizer in `isat stream`)
-- **Encryption**: `cryptography` (for `isat encrypt` AES-256-GCM)
-- **Server**: `fastapi`, `uvicorn`
-- **Optimization**: `scipy`, `onnxsim`
-- **Monitoring**: `prometheus-client`, `pyyaml`, `jinja2`
+| File | Description |
+|------|-------------|
+| `isat_report.html` | Interactive HTML dashboard |
+| `isat_report.json` | Machine-readable results |
+| `best_config.sh` | Shell script to apply best env vars |
+| `isat_results.db` | SQLite history database |
+| `config.pbtxt` | Triton Inference Server config |
+| `isat.prom` | Prometheus metrics |
+| `traces_*.json` | OpenTelemetry trace export |
+| `isat_inference.cpp` | Generated C++ inference code |
 
 ---
 
@@ -802,17 +517,37 @@ Optional:
 
 | Version | Date | Highlights |
 |---------|------|------------|
-| v0.11.0 | May 2026 | Cutting-edge engine: speculative decoding, continuous batching, grammar-constrained gen, LoRA TIES/DARE/SLERP, tensor parallelism, CUDA graph capture, mixed-precision search, distillation, architecture surgery, live monitor (76 commands) |
-| v0.10.0 | May 2026 | 10 new modules: quantize, stream, shard, merge, explain, benchmark-suite, encrypt, safety, cloud-deploy, test (66 commands) |
-| v0.9.1 | May 2026 | Universal model converter (`isat onnx`), 6-model E2E validation, PyTorch 2.9+ compat, multi-modal export (56 commands) |
-| v0.8.x | Apr 2026 | Auto-detect hardware, generate inference scripts, Windows DirectML + MIGraphX via WinML, cross-platform GPU detection |
-| v0.7.x | Apr 2026 | Pruning, distillation, fusion analysis, LLM bench, compiler comparison, replay, drift monitor, codegen (55 commands) |
-| v0.6.0 | Apr 2026 | Tracing, canary deploy, alerts, graph surgery, caching, input guard, ensemble, GPU frag (45 commands) |
-| v0.5.0 | Apr 2026 | Regression detector, security scanner, compat matrix, thermal monitor, quant sensitivity, pipeline optimizer, HW recommender, model registry (38 commands) |
-| v0.4.0 | Apr 2026 | Dynamic shapes, model hub, power profiler, memory planner, A/B testing, graph visualizer, env snapshot, batch scheduler (30 commands) |
-| v0.3.0 | Apr 2026 | Latency profiler, cost estimator, SLA validator, health checker, migration tool, notifications (22 commands) |
-| v0.2.0 | Apr 2026 | Config system, model optimization, stress testing, plugin system, model zoo (14 commands) |
-| v0.1.0 | Apr 2026 | Initial release: auto-tuning, Bayesian search, multi-provider support (9 commands) |
+| **v0.11.0** | May 2026 | Speculative decoding, continuous batching, grammar-constrained generation, LoRA TIES/DARE/SLERP, tensor parallelism, CUDA graph capture, mixed-precision search, knowledge distillation, architecture surgery, live monitoring (76 commands) |
+| v0.10.0 | May 2026 | Quantization, streaming, sharding, merging, explainability, benchmarking, encryption, safety, cloud deployment, automated testing (66 commands) |
+| v0.9.1 | May 2026 | Universal model converter, 6-model E2E validation, PyTorch 2.9+ compatibility (56 commands) |
+| v0.8.x | Apr 2026 | Auto-detect hardware, inference script generation, Windows DirectML, cross-platform GPU detection |
+| v0.7.x | Apr 2026 | Pruning, distillation planning, fusion analysis, LLM benchmarking, compiler comparison (55 commands) |
+| v0.6.0 | Apr 2026 | Tracing, canary deployment, alerts, graph surgery, caching (45 commands) |
+| v0.5.0 | Apr 2026 | Regression detection, security scanning, thermal monitoring (38 commands) |
+| v0.4.0 | Apr 2026 | Dynamic shapes, model hub, power profiler, A/B testing (30 commands) |
+| v0.3.0 | Apr 2026 | Latency profiler, cost estimator, SLA validation (22 commands) |
+| v0.2.0 | Apr 2026 | Config system, optimization, stress testing, plugin system (14 commands) |
+| v0.1.0 | Apr 2026 | Initial release: auto-tuning, Bayesian search (9 commands) |
+
+---
+
+## Requirements
+
+- **Python** >= 3.9
+- **Runtime**: `onnxruntime` (CPU), `onnxruntime-rocm` (AMD), or `onnxruntime-gpu` (NVIDIA)
+- **Core**: `onnx`, `numpy`
+- **Optional**: `transformers`, `torch`, `tensorflow`, `fastapi`, `uvicorn`, `cryptography`, `scipy`, `onnxsim`
+
+---
+
+## Contributing
+
+Contributions are welcome. Please open an issue first to discuss what you'd like to change.
+
+```bash
+git clone https://github.com/SID-Devu/isat-tuner.git
+cd isat && pip install -e ".[dev,all]"
+```
 
 ---
 
@@ -821,18 +556,16 @@ Optional:
 ```bibtex
 @software{isat_tuner,
   author = {Sudheer Ibrahim Daniel Devu},
-  title = {ISAT: Inference Stack Auto-Tuner},
-  year = {2026},
+  title  = {ISAT: Inference Stack Auto-Tuner},
+  year   = {2026},
   version = {0.11.0},
-  url = {https://github.com/SID-Devu/isat-tuner},
-  license = {Apache-2.0}
+  url    = {https://github.com/SID-Devu/isat-tuner},
+  note   = {76-command production inference engine for ONNX models}
 }
 ```
 
 ---
 
-## License
-
-Apache 2.0 -- see [LICENSE](LICENSE)
-
-Copyright 2026 Sudheer Ibrahim Daniel Devu
+<p align="center">
+  <strong>Apache 2.0</strong> &mdash; Copyright 2026 Sudheer Ibrahim Daniel Devu
+</p>
